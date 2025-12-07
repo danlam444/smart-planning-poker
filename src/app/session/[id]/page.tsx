@@ -6,6 +6,41 @@ import { getPusherClient } from '@/lib/pusher-client';
 import { CARD_VALUES } from '@/types/poker';
 import type { Channel } from 'pusher-js';
 
+// Bell icon component
+function BellIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      className={className}
+    >
+      <path
+        fillRule="evenodd"
+        d="M5.25 9a6.75 6.75 0 0113.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 01-.297 1.206c-1.544.57-3.16.99-4.831 1.243a3.75 3.75 0 11-7.48 0 24.585 24.585 0 01-4.831-1.244.75.75 0 01-.298-1.205A8.217 8.217 0 005.25 9.75V9zm4.502 8.9a2.25 2.25 0 104.496 0 25.057 25.057 0 01-4.496 0z"
+        clipRule="evenodd"
+      />
+    </svg>
+  );
+}
+
+// Copy icon component (two squares)
+function CopyIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      className={className}
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+    </svg>
+  );
+}
+
 type ParticipantRole = 'estimator' | 'observer';
 
 interface Participant {
@@ -59,9 +94,12 @@ export default function SessionPage() {
   const [myRole, setMyRole] = useState<ParticipantRole>('estimator');
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isShaking, setIsShaking] = useState(false);
   const channelRef = useRef<Channel | null>(null);
   const hasAttemptedRejoin = useRef(false);
   const myIdRef = useRef<string | null>(null);
+  const bellAudioRef = useRef<HTMLAudioElement | null>(null);
+  const participantNameRef = useRef<string | null>(null);
 
   useEffect(() => {
     const pusher = getPusherClient();
@@ -77,6 +115,23 @@ export default function SessionPage() {
           setSelectedCard(me.vote);
         }
       }
+    });
+
+    channel.bind('bell', (data: { from: string; timestamp: number }) => {
+      // Don't play bell for the person who rang it
+      if (data.from === participantNameRef.current) return;
+
+      // Play bell sound
+      if (bellAudioRef.current) {
+        bellAudioRef.current.currentTime = 0;
+        bellAudioRef.current.play().catch(() => {
+          // Ignore autoplay errors
+        });
+      }
+
+      // Trigger shake animation
+      setIsShaking(true);
+      setTimeout(() => setIsShaking(false), 500);
     });
 
     // Try to rejoin with stored participant info
@@ -98,6 +153,7 @@ export default function SessionPage() {
             setSession(state);
             setMyId(stored.participantId);
             myIdRef.current = stored.participantId;
+            participantNameRef.current = stored.name;
             setMyRole(stored.role);
             setJoined(true);
             // Restore vote highlight
@@ -148,6 +204,7 @@ export default function SessionPage() {
 
       setMyId(participantId);
       myIdRef.current = participantId;
+      participantNameRef.current = participantName.trim();
       setMyRole(selectedRole);
       setJoined(true);
     } catch (err) {
@@ -195,6 +252,20 @@ export default function SessionPage() {
   const copyLink = useCallback(() => {
     navigator.clipboard.writeText(window.location.href);
   }, []);
+
+  const ringBell = useCallback(async () => {
+    if (!participantNameRef.current) return;
+
+    try {
+      await fetch(`/api/sessions/${sessionId}/bell`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantName: participantNameRef.current }),
+      });
+    } catch (err) {
+      console.error('Failed to ring bell:', err);
+    }
+  }, [sessionId]);
 
   if (!joined) {
     return (
@@ -274,21 +345,34 @@ export default function SessionPage() {
   }
 
   return (
-    <main className="min-h-screen p-8">
+    <main className={`min-h-screen p-8 ${isShaking ? 'animate-shake' : ''}`}>
+      {/* Hidden audio element for bell sound */}
+      <audio ref={bellAudioRef} src="/bell.mp3" preload="auto" />
+
       <div className="max-w-4xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold">{session?.name || 'Planning Poker'}</h1>
-            <p className="text-gray-600 dark:text-gray-400 text-sm">
-              Session ID: {sessionId}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-gray-600 dark:text-gray-400 text-sm">
+                Session ID: {sessionId}
+              </p>
+              <button
+                onClick={copyLink}
+                className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+                title="Copy invite link"
+              >
+                <CopyIcon className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <button
-            onClick={copyLink}
-            className="px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg transition-colors text-sm"
+            onClick={ringBell}
+            className="p-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg transition-colors"
+            title="Ring bell to get attention"
           >
-            Copy Invite Link
+            <BellIcon className="w-6 h-6" />
           </button>
         </div>
 
