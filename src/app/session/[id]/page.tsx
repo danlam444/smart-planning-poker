@@ -2,8 +2,25 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
-import { io, Socket } from 'socket.io-client';
-import { SessionState, Participant, ParticipantRole, CARD_VALUES } from '@/types/poker';
+import { getPusherClient } from '@/lib/pusher-client';
+import { CARD_VALUES } from '@/types/poker';
+import type { Channel } from 'pusher-js';
+
+type ParticipantRole = 'estimator' | 'observer';
+
+interface Participant {
+  id: string;
+  name: string;
+  role: ParticipantRole;
+  vote: string | null;
+}
+
+interface SessionState {
+  id: string;
+  name: string;
+  participants: Participant[];
+  revealed: boolean;
+}
 
 interface StoredParticipant {
   name: string;
@@ -34,7 +51,6 @@ export default function SessionPage() {
   const params = useParams();
   const sessionId = params.id as string;
 
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [session, setSession] = useState<SessionState | null>(null);
   const [participantName, setParticipantName] = useState('');
   const [selectedRole, setSelectedRole] = useState<ParticipantRole>('estimator');
@@ -43,99 +59,138 @@ export default function SessionPage() {
   const [myRole, setMyRole] = useState<ParticipantRole>('estimator');
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const channelRef = useRef<Channel | null>(null);
   const hasAttemptedRejoin = useRef(false);
+  const myIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    const socketInstance = io({
-      path: '/api/socketio',
-    });
+    const pusher = getPusherClient();
+    const channel = pusher.subscribe(`session-${sessionId}`);
+    channelRef.current = channel;
 
-    socketInstance.on('connect', () => {
-      console.log('Connected to socket');
-
-      // Try to rejoin with stored participant info
-      if (!hasAttemptedRejoin.current) {
-        hasAttemptedRejoin.current = true;
-        const stored = getStoredParticipant(sessionId);
-        if (stored) {
-          socketInstance.emit('rejoin-session', {
-            sessionId,
-            name: stored.name,
-            role: stored.role,
-            participantId: stored.participantId,
-          });
-          setMyId(stored.participantId);
-          setMyRole(stored.role);
-          setJoined(true);
-        }
-      }
-    });
-
-    socketInstance.on('session-state', (state: SessionState) => {
+    channel.bind('session-state', (state: SessionState) => {
       setSession(state);
-      // Restore selectedCard from session state if we have rejoined
-      const stored = getStoredParticipant(sessionId);
-      if (stored) {
-        const me = state.participants.find(p => p.id === stored.participantId);
+      // Restore selectedCard from session state if we have an ID
+      if (myIdRef.current) {
+        const me = state.participants.find(p => p.id === myIdRef.current);
         if (me && me.vote) {
           setSelectedCard(me.vote);
         }
       }
     });
 
-    socketInstance.on('error', (msg: string) => {
-      setError(msg);
-    });
-
-    setSocket(socketInstance);
+    // Try to rejoin with stored participant info
+    if (!hasAttemptedRejoin.current) {
+      hasAttemptedRejoin.current = true;
+      const stored = getStoredParticipant(sessionId);
+      if (stored) {
+        fetch(`/api/sessions/${sessionId}/join`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            participantId: stored.participantId,
+            name: stored.name,
+            role: stored.role,
+          }),
+        })
+          .then(res => res.json())
+          .then((state: SessionState) => {
+            setSession(state);
+            setMyId(stored.participantId);
+            myIdRef.current = stored.participantId;
+            setMyRole(stored.role);
+            setJoined(true);
+            // Restore vote highlight
+            const me = state.participants.find(p => p.id === stored.participantId);
+            if (me && me.vote) {
+              setSelectedCard(me.vote);
+            }
+          })
+          .catch(err => {
+            console.error('Failed to rejoin:', err);
+          });
+      }
+    }
 
     return () => {
-      socketInstance.disconnect();
+      channel.unbind_all();
+      pusher.unsubscribe(`session-${sessionId}`);
     };
   }, [sessionId]);
 
-  const joinSession = useCallback((e: React.FormEvent) => {
+  const joinSession = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!socket || !participantName.trim()) return;
+    if (!participantName.trim()) return;
 
-    // Generate a unique participant ID that persists across reconnections
     const participantId = crypto.randomUUID();
 
-    socket.emit('join-session', {
-      sessionId,
-      name: participantName.trim(),
-      role: selectedRole,
-      participantId,
-    });
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participantId,
+          name: participantName.trim(),
+          role: selectedRole,
+        }),
+      });
 
-    // Store participant info in localStorage
-    storeParticipant(sessionId, {
-      name: participantName.trim(),
-      role: selectedRole,
-      participantId,
-    });
+      if (!res.ok) {
+        throw new Error('Failed to join session');
+      }
 
-    setMyId(participantId);
-    setMyRole(selectedRole);
-    setJoined(true);
-  }, [socket, sessionId, participantName, selectedRole]);
+      // Store participant info in localStorage
+      storeParticipant(sessionId, {
+        name: participantName.trim(),
+        role: selectedRole,
+        participantId,
+      });
 
-  const vote = useCallback((value: string) => {
-    if (!socket || !joined) return;
+      setMyId(participantId);
+      myIdRef.current = participantId;
+      setMyRole(selectedRole);
+      setJoined(true);
+    } catch (err) {
+      setError('Failed to join session');
+      console.error(err);
+    }
+  }, [sessionId, participantName, selectedRole]);
+
+  const vote = useCallback(async (value: string) => {
+    if (!joined || !myId) return;
     setSelectedCard(value);
-    socket.emit('vote', { sessionId, vote: value });
-  }, [socket, sessionId, joined]);
 
-  const revealVotes = useCallback(() => {
-    if (!socket) return;
-    socket.emit('reveal', { sessionId });
-  }, [socket, sessionId]);
+    try {
+      await fetch(`/api/sessions/${sessionId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId: myId, vote: value }),
+      });
+    } catch (err) {
+      console.error('Failed to vote:', err);
+    }
+  }, [sessionId, joined, myId]);
 
-  const resetVotes = useCallback(() => {
-    if (!socket) return;
+  const revealVotes = useCallback(async () => {
+    try {
+      await fetch(`/api/sessions/${sessionId}/reveal`, {
+        method: 'POST',
+      });
+    } catch (err) {
+      console.error('Failed to reveal:', err);
+    }
+  }, [sessionId]);
+
+  const resetVotes = useCallback(async () => {
     setSelectedCard(null);
-    socket.emit('reset', { sessionId });
-  }, [socket, sessionId]);
+    try {
+      await fetch(`/api/sessions/${sessionId}/reset`, {
+        method: 'POST',
+      });
+    } catch (err) {
+      console.error('Failed to reset:', err);
+    }
+  }, [sessionId]);
 
   const copyLink = useCallback(() => {
     navigator.clipboard.writeText(window.location.href);

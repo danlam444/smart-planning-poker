@@ -172,6 +172,9 @@ test.describe('Planning Poker Session', () => {
     // Place a vote
     await page1.getByRole('button', { name: '13' }).click();
 
+    // Wait for vote to be registered (checkmark appears)
+    await expect(page1.locator('text=✓')).toBeVisible();
+
     // Simulate closing browser - close the context but keep localStorage
     // Get localStorage before closing
     const storageState = await context1.storageState();
