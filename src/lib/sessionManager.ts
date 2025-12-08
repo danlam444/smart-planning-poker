@@ -130,7 +130,7 @@ export async function getParticipant(sessionId: string, participantId: string): 
   return session.participants.find(p => p.id === participantId) || null;
 }
 
-export async function vote(sessionId: string, participantId: string, voteValue: string): Promise<boolean> {
+export async function vote(sessionId: string, participantId: string, voteValue: string | null): Promise<boolean> {
   const session = await getSession(sessionId);
   if (!session) return false;
 

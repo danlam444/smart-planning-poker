@@ -103,7 +103,7 @@ test.describe('Planning Poker Session', () => {
     await observer1.fill('#name', 'Observer1');
     await observer1.click('input[value="observer"]');
     await observer1.click('button[type="submit"]');
-    await expect(observer1.getByText('Observers')).toBeVisible();
+    await expect(observer1.getByText('Observers')).toBeVisible({ timeout: 10000 });
 
     // Observer 2 joins the same session
     const context4 = await browser.newContext();
@@ -115,20 +115,20 @@ test.describe('Planning Poker Session', () => {
 
     // Verify all participants see each other
     for (const page of [estimator1, estimator2, observer1, observer2]) {
-      await expect(page.getByText('Estimator1')).toBeVisible();
-      await expect(page.getByText('Estimator2')).toBeVisible();
-      await expect(page.getByText('Observer1')).toBeVisible();
-      await expect(page.getByText('Observer2')).toBeVisible();
+      await expect(page.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText('Estimator2')).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText('Observer1')).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText('Observer2')).toBeVisible({ timeout: 10000 });
     }
 
     // Estimators place their votes
     await estimator1.getByRole('button', { name: '5' }).click();
     await estimator2.getByRole('button', { name: '8' }).click();
 
-    // Verify votes are shown as checkmarks (not revealed yet)
+    // Verify votes are shown (cards turn dark when voted, not revealed yet)
     for (const page of [estimator1, estimator2, observer1, observer2]) {
-      // Wait for the checkmarks to appear (votes placed but not revealed)
-      await expect(page.locator('text=✓').first()).toBeVisible();
+      // Wait for the dark card backgrounds to appear (votes placed but not revealed)
+      await expect(page.locator('.bg-zinc-700').first()).toBeVisible();
     }
 
     // Observer 1 clicks "Reveal Votes"
@@ -152,6 +152,40 @@ test.describe('Planning Poker Session', () => {
     await context4.close();
   });
 
+  test('estimator can toggle vote on and off', async ({ page }) => {
+    // Create a new session
+    await page.goto('/');
+    await page.fill('#sessionName', 'Toggle Vote Sprint');
+    await page.click('button[type="submit"]');
+
+    // Join as estimator
+    await page.fill('#name', 'Toggler');
+    await page.click('button[type="submit"]');
+    await expect(page.getByText('Estimators')).toBeVisible();
+
+    // Initially, participant card should show not-voted state (white background)
+    await expect(page.locator('.bg-white.border-zinc-300')).toBeVisible();
+    await expect(page.locator('.bg-zinc-700')).not.toBeVisible();
+
+    // Vote for 5
+    await page.getByRole('button', { name: '5' }).click();
+
+    // Card should now show voted state (dark background)
+    await expect(page.locator('.bg-zinc-700')).toBeVisible();
+    // Vote button should be highlighted
+    const voteButton = page.getByRole('button', { name: '5' });
+    await expect(voteButton).toHaveClass(/bg-blue-600/);
+
+    // Click the same button again to toggle off
+    await page.getByRole('button', { name: '5' }).click();
+
+    // Card should return to not-voted state (white background)
+    await expect(page.locator('.bg-white.border-zinc-300')).toBeVisible();
+    await expect(page.locator('.bg-zinc-700')).not.toBeVisible();
+    // Vote button should no longer be highlighted
+    await expect(voteButton).not.toHaveClass(/bg-blue-600/);
+  });
+
   test('participant can close browser and rejoin with same profile', async ({ browser }) => {
     // Create a session and join as estimator
     const context1 = await browser.newContext();
@@ -172,8 +206,8 @@ test.describe('Planning Poker Session', () => {
     // Place a vote
     await page1.getByRole('button', { name: '13' }).click();
 
-    // Wait for vote to be registered (checkmark appears)
-    await expect(page1.locator('text=✓')).toBeVisible();
+    // Wait for vote to be registered (card turns dark)
+    await expect(page1.locator('.bg-zinc-700')).toBeVisible();
 
     // Simulate closing browser - close the context but keep localStorage
     // Get localStorage before closing

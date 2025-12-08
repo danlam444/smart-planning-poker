@@ -41,6 +41,107 @@ function CopyIcon({ className }: { className?: string }) {
   );
 }
 
+// Sheep icon component
+function SheepIcon({ className, variant = 'dark' }: { className?: string; variant?: 'dark' | 'light' | 'purple' }) {
+  const colors = {
+    dark: { fill: '#3f3f46', face: '#fafafa', eyes: '#fafafa' },
+    light: { fill: '#fafafa', face: '#3f3f46', eyes: '#3f3f46' },
+    purple: { fill: '#7c3aed', face: '#fafafa', eyes: '#fafafa' },
+  };
+  const { fill: fillColor, face: faceColor, eyes: eyeColor } = colors[variant];
+  const strokeColor = fillColor;
+
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 100 80"
+      className={className}
+    >
+      {/* Body - fluffy cloud shape */}
+      <ellipse cx="50" cy="45" rx="30" ry="22" fill={fillColor} />
+      <circle cx="25" cy="42" r="12" fill={fillColor} />
+      <circle cx="75" cy="42" r="12" fill={fillColor} />
+      <circle cx="35" cy="30" r="10" fill={fillColor} />
+      <circle cx="50" cy="28" r="10" fill={fillColor} />
+      <circle cx="65" cy="30" r="10" fill={fillColor} />
+      <circle cx="30" cy="55" r="8" fill={fillColor} />
+      <circle cx="70" cy="55" r="8" fill={fillColor} />
+
+      {/* Tail */}
+      <circle cx="82" cy="45" r="5" fill={fillColor} />
+
+      {/* Legs */}
+      <rect x="32" y="58" width="4" height="16" rx="2" fill={strokeColor} />
+      <rect x="42" y="58" width="4" height="16" rx="2" fill={strokeColor} />
+      <rect x="54" y="58" width="4" height="16" rx="2" fill={strokeColor} />
+      <rect x="64" y="58" width="4" height="16" rx="2" fill={strokeColor} />
+
+      {/* Head */}
+      <ellipse cx="22" cy="35" rx="12" ry="14" fill={fillColor} />
+      <ellipse cx="22" cy="38" rx="8" ry="9" fill={faceColor} />
+
+      {/* Ears */}
+      <ellipse cx="12" cy="28" rx="5" ry="3" fill={faceColor} />
+      <ellipse cx="32" cy="28" rx="5" ry="3" fill={faceColor} />
+
+      {/* Eyes */}
+      <circle cx="18" cy="35" r="1.5" fill={eyeColor} />
+      <circle cx="26" cy="35" r="1.5" fill={eyeColor} />
+
+      {/* Nose */}
+      <ellipse cx="22" cy="42" rx="2" ry="1.5" fill={eyeColor} />
+    </svg>
+  );
+}
+
+// Participant card component - playing card style
+function ParticipantCard({
+  participant,
+  isMe,
+  revealed
+}: {
+  participant: Participant;
+  isMe: boolean;
+  revealed: boolean;
+}) {
+  const hasVoted = participant.vote !== null;
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        className={`relative w-20 h-28 rounded-lg border-2 shadow-md transition-all ${
+          isMe ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+        } ${
+          hasVoted
+            ? 'bg-zinc-700 border-zinc-600'
+            : 'bg-white border-zinc-300'
+        }`}
+      >
+        {/* Inner border */}
+        <div
+          className={`absolute inset-2 rounded border-2 ${
+            hasVoted ? 'border-zinc-500' : 'border-zinc-200'
+          }`}
+        />
+
+        {/* Card content */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          {revealed && hasVoted ? (
+            <span className="text-2xl font-bold text-white">{participant.vote}</span>
+          ) : hasVoted ? (
+            <img src="/sheep-voted.svg" alt="Voted" className="w-14 h-14" />
+          ) : (
+            <img src="/sheep-not-voted.svg" alt="Not voted" className="w-14 h-14" />
+          )}
+        </div>
+      </div>
+      <span className={`text-sm font-medium truncate max-w-20 ${isMe ? 'text-blue-600 dark:text-blue-400' : ''}`}>
+        {participant.name}
+      </span>
+    </div>
+  );
+}
+
 type ParticipantRole = 'estimator' | 'observer';
 
 interface Participant {
@@ -215,18 +316,21 @@ export default function SessionPage() {
 
   const vote = useCallback(async (value: string) => {
     if (!joined || !myId) return;
-    setSelectedCard(value);
+
+    // Toggle vote off if clicking the same card
+    const newValue = selectedCard === value ? null : value;
+    setSelectedCard(newValue);
 
     try {
       await fetch(`/api/sessions/${sessionId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participantId: myId, vote: value }),
+        body: JSON.stringify({ participantId: myId, vote: newValue }),
       });
     } catch (err) {
       console.error('Failed to vote:', err);
     }
-  }, [sessionId, joined, myId]);
+  }, [sessionId, joined, myId, selectedCard]);
 
   const revealVotes = useCallback(async () => {
     try {
@@ -384,29 +488,14 @@ export default function SessionPage() {
           {session?.participants.some((p) => p.role === 'estimator') && (
             <div className="mb-4">
               <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Estimators</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              <div className="flex flex-wrap gap-4">
                 {session?.participants.filter((p) => p.role === 'estimator').map((p: Participant) => (
-                  <div
+                  <ParticipantCard
                     key={p.id}
-                    className={`p-4 rounded-lg text-center ${
-                      p.id === myId
-                        ? 'bg-blue-100 dark:bg-blue-900 border-2 border-blue-500'
-                        : 'bg-white dark:bg-gray-700'
-                    }`}
-                  >
-                    <div className="font-medium truncate">{p.name}</div>
-                    <div className="mt-2 text-2xl">
-                      {session?.revealed ? (
-                        <span className={p.vote ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}>
-                          {p.vote || '-'}
-                        </span>
-                      ) : (
-                        <span className={p.vote ? 'text-green-600' : 'text-gray-400'}>
-                          {p.vote ? '✓' : '...'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                    participant={p}
+                    isMe={p.id === myId}
+                    revealed={session?.revealed ?? false}
+                  />
                 ))}
               </div>
             </div>
@@ -416,18 +505,26 @@ export default function SessionPage() {
           {session?.participants.some((p) => p.role === 'observer') && (
             <div>
               <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Observers</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              <div className="flex flex-wrap gap-4">
                 {session?.participants.filter((p) => p.role === 'observer').map((p: Participant) => (
-                  <div
-                    key={p.id}
-                    className={`p-4 rounded-lg text-center ${
-                      p.id === myId
-                        ? 'bg-purple-100 dark:bg-purple-900 border-2 border-purple-500'
-                        : 'bg-white dark:bg-gray-700'
-                    }`}
-                  >
-                    <div className="font-medium truncate">{p.name}</div>
-                    <div className="mt-1 text-xs text-gray-500">Observer</div>
+                  <div key={p.id} className="flex flex-col items-center gap-2">
+                    <div
+                      className={`relative w-20 h-28 rounded-lg border-2 shadow-md bg-purple-100 border-purple-300 ${
+                        p.id === myId ? 'ring-2 ring-purple-500 ring-offset-2' : ''
+                      }`}
+                    >
+                      <div className="absolute inset-2 rounded border-2 border-purple-200" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <img
+                          src="/sheep-not-voted.svg"
+                          alt="Observer"
+                          className="w-14 h-14 hue-rotate-[260deg] saturate-50"
+                        />
+                      </div>
+                    </div>
+                    <span className={`text-sm font-medium truncate max-w-20 ${p.id === myId ? 'text-purple-600 dark:text-purple-400' : ''}`}>
+                      {p.name}
+                    </span>
                   </div>
                 ))}
               </div>
