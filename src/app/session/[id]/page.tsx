@@ -42,10 +42,14 @@ function CopyIcon({ className }: { className?: string }) {
 }
 
 // Sheep icon component
-function SheepIcon({ className, variant = 'dark' }: { className?: string; variant?: 'dark' | 'light' }) {
-  const fillColor = variant === 'dark' ? '#3f3f46' : '#fafafa';
-  const strokeColor = variant === 'dark' ? '#3f3f46' : '#fafafa';
-  const faceColor = variant === 'dark' ? '#fafafa' : '#3f3f46';
+function SheepIcon({ className, variant = 'dark' }: { className?: string; variant?: 'dark' | 'light' | 'purple' }) {
+  const colors = {
+    dark: { fill: '#3f3f46', face: '#fafafa', eyes: '#fafafa' },
+    light: { fill: '#fafafa', face: '#3f3f46', eyes: '#3f3f46' },
+    purple: { fill: '#7c3aed', face: '#fafafa', eyes: '#fafafa' },
+  };
+  const { fill: fillColor, face: faceColor, eyes: eyeColor } = colors[variant];
+  const strokeColor = fillColor;
 
   return (
     <svg
@@ -81,11 +85,11 @@ function SheepIcon({ className, variant = 'dark' }: { className?: string; varian
       <ellipse cx="32" cy="28" rx="5" ry="3" fill={faceColor} />
 
       {/* Eyes */}
-      <circle cx="18" cy="35" r="1.5" fill={fillColor === '#fafafa' ? '#3f3f46' : '#fafafa'} />
-      <circle cx="26" cy="35" r="1.5" fill={fillColor === '#fafafa' ? '#3f3f46' : '#fafafa'} />
+      <circle cx="18" cy="35" r="1.5" fill={eyeColor} />
+      <circle cx="26" cy="35" r="1.5" fill={eyeColor} />
 
       {/* Nose */}
-      <ellipse cx="22" cy="42" rx="2" ry="1.5" fill={fillColor === '#fafafa' ? '#3f3f46' : '#fafafa'} />
+      <ellipse cx="22" cy="42" rx="2" ry="1.5" fill={eyeColor} />
     </svg>
   );
 }
