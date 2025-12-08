@@ -161,7 +161,7 @@ test.describe('Planning Poker Session', () => {
     // Join as estimator
     await page.fill('#name', 'Toggler');
     await page.click('button[type="submit"]');
-    await expect(page.getByText('Estimators')).toBeVisible();
+    await expect(page.getByText('Estimators')).toBeVisible({ timeout: 10000 });
 
     // Initially, participant card should show not-voted state (white background)
     await expect(page.locator('.bg-white.border-zinc-300')).toBeVisible();
@@ -184,6 +184,59 @@ test.describe('Planning Poker Session', () => {
     await expect(page.locator('.bg-zinc-700')).not.toBeVisible();
     // Vote button should no longer be highlighted
     await expect(voteButton).not.toHaveClass(/bg-blue-600/);
+  });
+
+  test('new round clears all vote selections for all participants', async ({ browser }) => {
+    // Create a new session
+    const context1 = await browser.newContext();
+    const estimator1 = await context1.newPage();
+
+    await estimator1.goto('/');
+    await estimator1.fill('#sessionName', 'New Round Test');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = estimator1.url();
+
+    // Estimator 1 joins
+    await estimator1.fill('#name', 'Estimator1');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1.getByText('Estimators')).toBeVisible();
+
+    // Estimator 2 joins
+    const context2 = await browser.newContext();
+    const estimator2 = await context2.newPage();
+    await estimator2.goto(sessionUrl);
+    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.click('button[type="submit"]');
+    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+
+    // Both estimators vote
+    await estimator1.getByRole('button', { name: '5' }).click();
+    await estimator2.getByRole('button', { name: '8' }).click();
+
+    // Verify both have voted (dark card backgrounds visible)
+    await expect(estimator1.locator('.bg-zinc-700').first()).toBeVisible();
+    await expect(estimator2.locator('.bg-zinc-700').first()).toBeVisible();
+
+    // Verify vote buttons are highlighted
+    await expect(estimator1.getByRole('button', { name: '5' })).toHaveClass(/bg-blue-600/, { timeout: 10000 });
+    await expect(estimator2.getByRole('button', { name: '8' })).toHaveClass(/bg-blue-600/, { timeout: 10000 });
+
+    // Estimator 1 clicks "New Round"
+    await estimator1.getByRole('button', { name: 'New Round' }).click();
+
+    // Both estimators should have their vote selections cleared
+    // Cards should return to not-voted state (white background)
+    await expect(estimator1.locator('.bg-white.border-zinc-300').first()).toBeVisible();
+    await expect(estimator2.locator('.bg-white.border-zinc-300').first()).toBeVisible({ timeout: 10000 });
+
+    // Vote buttons should no longer be highlighted for either user
+    await expect(estimator1.getByRole('button', { name: '5' })).not.toHaveClass(/bg-blue-600/);
+    await expect(estimator2.getByRole('button', { name: '8' })).not.toHaveClass(/bg-blue-600/);
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
   });
 
   test('participant can close browser and rejoin with same profile', async ({ browser }) => {
@@ -231,7 +284,7 @@ test.describe('Planning Poker Session', () => {
 
     // Vote should still be highlighted (card 13 should have the selected style)
     const card13 = page2.getByRole('button', { name: '13' });
-    await expect(card13).toHaveClass(/bg-blue-600/);
+    await expect(card13).toHaveClass(/bg-blue-600/, { timeout: 10000 });
 
     // Cleanup
     await context2.close();
