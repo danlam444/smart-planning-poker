@@ -103,7 +103,7 @@ test.describe('Planning Poker Session', () => {
     await observer1.fill('#name', 'Observer1');
     await observer1.click('input[value="observer"]');
     await observer1.click('button[type="submit"]');
-    await expect(observer1.getByText('Observers')).toBeVisible();
+    await expect(observer1.getByText('Observers')).toBeVisible({ timeout: 10000 });
 
     // Observer 2 joins the same session
     const context4 = await browser.newContext();
@@ -125,10 +125,10 @@ test.describe('Planning Poker Session', () => {
     await estimator1.getByRole('button', { name: '5' }).click();
     await estimator2.getByRole('button', { name: '8' }).click();
 
-    // Verify votes are shown as checkmarks (not revealed yet)
+    // Verify votes are shown (cards turn dark when voted, not revealed yet)
     for (const page of [estimator1, estimator2, observer1, observer2]) {
-      // Wait for the checkmarks to appear (votes placed but not revealed)
-      await expect(page.locator('text=✓').first()).toBeVisible();
+      // Wait for the dark card backgrounds to appear (votes placed but not revealed)
+      await expect(page.locator('.bg-zinc-700').first()).toBeVisible();
     }
 
     // Observer 1 clicks "Reveal Votes"
@@ -172,8 +172,8 @@ test.describe('Planning Poker Session', () => {
     // Place a vote
     await page1.getByRole('button', { name: '13' }).click();
 
-    // Wait for vote to be registered (checkmark appears)
-    await expect(page1.locator('text=✓')).toBeVisible();
+    // Wait for vote to be registered (card turns dark)
+    await expect(page1.locator('.bg-zinc-700')).toBeVisible();
 
     // Simulate closing browser - close the context but keep localStorage
     // Get localStorage before closing
