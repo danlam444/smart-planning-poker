@@ -128,11 +128,10 @@ function ParticipantCard({
         <div className="absolute inset-0 flex items-center justify-center">
           {revealed && hasVoted ? (
             <span className="text-2xl font-bold text-white">{participant.vote}</span>
+          ) : hasVoted ? (
+            <img src="/sheep-voted.svg" alt="Voted" className="w-14 h-14" />
           ) : (
-            <SheepIcon
-              className="w-12 h-12"
-              variant={hasVoted ? 'light' : 'dark'}
-            />
+            <img src="/sheep-not-voted.svg" alt="Not voted" className="w-14 h-14" />
           )}
         </div>
       </div>
@@ -317,18 +316,21 @@ export default function SessionPage() {
 
   const vote = useCallback(async (value: string) => {
     if (!joined || !myId) return;
-    setSelectedCard(value);
+
+    // Toggle vote off if clicking the same card
+    const newValue = selectedCard === value ? null : value;
+    setSelectedCard(newValue);
 
     try {
       await fetch(`/api/sessions/${sessionId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participantId: myId, vote: value }),
+        body: JSON.stringify({ participantId: myId, vote: newValue }),
       });
     } catch (err) {
       console.error('Failed to vote:', err);
     }
-  }, [sessionId, joined, myId]);
+  }, [sessionId, joined, myId, selectedCard]);
 
   const revealVotes = useCallback(async () => {
     try {
@@ -513,7 +515,11 @@ export default function SessionPage() {
                     >
                       <div className="absolute inset-2 rounded border-2 border-purple-200" />
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <SheepIcon className="w-12 h-12" variant="purple" />
+                        <img
+                          src="/sheep-not-voted.svg"
+                          alt="Observer"
+                          className="w-14 h-14 hue-rotate-[260deg] saturate-50"
+                        />
                       </div>
                     </div>
                     <span className={`text-sm font-medium truncate max-w-20 ${p.id === myId ? 'text-purple-600 dark:text-purple-400' : ''}`}>

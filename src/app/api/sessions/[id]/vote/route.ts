@@ -9,8 +9,8 @@ export async function POST(
   const { id: sessionId } = await params;
   const { participantId, vote: voteValue } = await request.json();
 
-  if (!participantId || !voteValue) {
-    return NextResponse.json({ error: 'ParticipantId and vote are required' }, { status: 400 });
+  if (!participantId) {
+    return NextResponse.json({ error: 'ParticipantId is required' }, { status: 400 });
   }
 
   const success = await vote(sessionId, participantId, voteValue);
