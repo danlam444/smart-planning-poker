@@ -125,11 +125,14 @@ function ParticipantCard({
         />
 
         {/* Card content */}
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
           {revealed && hasVoted ? (
             <span className="text-2xl font-bold text-white">{participant.vote}</span>
           ) : hasVoted ? (
-            <img src="/sheep-voted.svg" alt="Voted" className="w-14 h-14" />
+            <>
+              <img src="/sheep-voted.svg" alt="Voted" className="w-14 h-14" />
+              <span className="text-[10px] font-bold text-white tracking-wider mt-1">VOTED</span>
+            </>
           ) : (
             <img src="/sheep-not-voted.svg" alt="Not voted" className="w-14 h-14" />
           )}
@@ -209,10 +212,10 @@ export default function SessionPage() {
 
     channel.bind('session-state', (state: SessionState) => {
       setSession(state);
-      // Restore selectedCard from session state if we have an ID
+      // Sync selectedCard from session state if we have an ID
       if (myIdRef.current) {
         const me = state.participants.find(p => p.id === myIdRef.current);
-        if (me && me.vote) {
+        if (me) {
           setSelectedCard(me.vote);
         }
       }
@@ -320,6 +323,17 @@ export default function SessionPage() {
     // Toggle vote off if clicking the same card
     const newValue = selectedCard === value ? null : value;
     setSelectedCard(newValue);
+
+    // Optimistic update: immediately update the local session state
+    setSession(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        participants: prev.participants.map(p =>
+          p.id === myId ? { ...p, vote: newValue } : p
+        ),
+      };
+    });
 
     try {
       await fetch(`/api/sessions/${sessionId}/vote`, {
@@ -595,34 +609,72 @@ export default function SessionPage() {
 
 function VoteSummary({ participants }: { participants: Participant[] }) {
   // Only count votes from estimators
-  const votes = participants
+  const allVotes = participants
     .filter((p) => p.role === 'estimator')
     .map((p) => p.vote)
-    .filter((v): v is string => v !== null && !isNaN(Number(v)))
+    .filter((v): v is string => v !== null);
+
+  const numericVotes = allVotes
+    .filter((v) => !isNaN(Number(v)))
     .map(Number);
 
-  if (votes.length === 0) {
+  // Count occurrences of each vote
+  const voteCounts = allVotes.reduce((acc, vote) => {
+    acc[vote] = (acc[vote] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  // Find the maximum count
+  const maxCount = Math.max(...Object.values(voteCounts), 0);
+
+  // Find all votes with the maximum count (majority or joint majority)
+  const majorityVotes = Object.entries(voteCounts)
+    .filter(([, count]) => count === maxCount)
+    .map(([vote]) => vote);
+
+  // Check if there's consensus (all votes are the same)
+  const hasConsensus = allVotes.length > 1 && majorityVotes.length === 1 && maxCount === allVotes.length;
+
+  if (numericVotes.length === 0) {
     return <p className="text-gray-600 dark:text-gray-400">No numeric votes cast</p>;
   }
 
-  const average = votes.reduce((a, b) => a + b, 0) / votes.length;
-  const min = Math.min(...votes);
-  const max = Math.max(...votes);
+  const average = numericVotes.reduce((a, b) => a + b, 0) / numericVotes.length;
+  const min = Math.min(...numericVotes);
+  const max = Math.max(...numericVotes);
 
   return (
-    <div className="grid grid-cols-3 gap-4 text-center">
-      <div>
-        <div className="text-2xl font-bold">{average.toFixed(1)}</div>
-        <div className="text-sm text-gray-600 dark:text-gray-400">Average</div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-4 text-center">
+        <div>
+          <div className="text-2xl font-bold">{average.toFixed(1)}</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">Average</div>
+        </div>
+        <div>
+          <div className="text-2xl font-bold">{min}</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">Min</div>
+        </div>
+        <div>
+          <div className="text-2xl font-bold">{max}</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">Max</div>
+        </div>
       </div>
-      <div>
-        <div className="text-2xl font-bold">{min}</div>
-        <div className="text-sm text-gray-600 dark:text-gray-400">Min</div>
-      </div>
-      <div>
-        <div className="text-2xl font-bold">{max}</div>
-        <div className="text-sm text-gray-600 dark:text-gray-400">Max</div>
-      </div>
+      {hasConsensus ? (
+        <div className="text-center pt-2 border-t border-green-200 dark:border-green-800">
+          <div className="text-2xl font-bold text-green-600 dark:text-green-400">Consensus!</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            Everyone voted {majorityVotes[0]}
+          </div>
+        </div>
+      ) : majorityVotes.length > 0 && (
+        <div className="text-center pt-2 border-t border-green-200 dark:border-green-800">
+          <div className="text-2xl font-bold">{majorityVotes.join(', ')}</div>
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            {majorityVotes.length === 1 ? 'Majority Vote' : 'Joint Majority'}
+            {maxCount > 1 && ` (${maxCount} votes)`}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
