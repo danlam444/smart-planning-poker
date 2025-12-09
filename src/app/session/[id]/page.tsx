@@ -159,6 +159,8 @@ interface SessionState {
   name: string;
   participants: Participant[];
   revealed: boolean;
+  story?: string;
+  storyLocked?: boolean;
 }
 
 interface StoredParticipant {
