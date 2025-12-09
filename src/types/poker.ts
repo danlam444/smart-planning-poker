@@ -24,4 +24,20 @@ export interface SessionState {
   storyLocked: boolean;
 }
 
-export const CARD_VALUES = ['0', '1', '2', '3', '5', '8', '13', '21', '?', '☕'];
+export type VotingScale = 'fibonacci' | 'tshirt';
+
+export const VOTING_SCALES: Record<VotingScale, { name: string; values: string[] }> = {
+  fibonacci: {
+    name: 'Story Points',
+    values: ['0', '1', '2', '3', '5', '8', '13', '21', '?', '☕'],
+  },
+  tshirt: {
+    name: 'T-Shirt Sizes',
+    values: ['XS', 'S', 'M', 'L', 'XL', 'XXL', '?', '☕'],
+  },
+};
+
+export const SCALE_ORDER: VotingScale[] = ['fibonacci', 'tshirt'];
+
+// Legacy export for backward compatibility
+export const CARD_VALUES = VOTING_SCALES.fibonacci.values;

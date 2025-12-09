@@ -160,6 +160,8 @@ export async function reset(sessionId: string): Promise<boolean> {
   if (!session) return false;
 
   session.revealed = false;
+  session.story = '';
+  session.storyLocked = false;
   session.participants.forEach(p => {
     if (p.role === 'estimator') {
       p.vote = null;
