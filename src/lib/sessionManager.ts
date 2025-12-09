@@ -16,6 +16,8 @@ export interface Session {
   name: string;
   participants: Participant[];
   revealed: boolean;
+  story: string;
+  storyLocked: boolean;
   createdAt: string;
   lastActivity: string;
 }
@@ -49,6 +51,8 @@ export async function createSession(id: string, name: string): Promise<Session> 
     name,
     participants: [],
     revealed: false,
+    story: '',
+    storyLocked: false,
     createdAt: now,
     lastActivity: now,
   };
@@ -161,6 +165,16 @@ export async function reset(sessionId: string): Promise<boolean> {
       p.vote = null;
     }
   });
+  await updateSession(session);
+  return true;
+}
+
+export async function updateStory(sessionId: string, story: string, storyLocked: boolean): Promise<boolean> {
+  const session = await getSession(sessionId);
+  if (!session) return false;
+
+  session.story = story;
+  session.storyLocked = storyLocked;
   await updateSession(session);
   return true;
 }

@@ -20,6 +20,8 @@ export interface SessionState {
   name: string;
   participants: Participant[];
   revealed: boolean;
+  story: string;
+  storyLocked: boolean;
 }
 
 export const CARD_VALUES = ['0', '1', '2', '3', '5', '8', '13', '21', '?', '☕'];
