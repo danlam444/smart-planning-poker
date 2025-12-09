@@ -136,7 +136,7 @@ test.describe('Planning Poker Session', () => {
 
     // All participants should see the revealed votes and results
     for (const page of [estimator1, estimator2, observer1, observer2]) {
-      await expect(page.getByText('Results')).toBeVisible();
+      await expect(page.getByText('Majority result')).toBeVisible();
       // Check average is shown (5+8)/2 = 6.5
       await expect(page.getByText('6.5')).toBeVisible();
       // Check min is 5
@@ -224,7 +224,7 @@ test.describe('Planning Poker Session', () => {
 
     // Estimator 1 reveals votes to open the modal, then clicks "New Round" in the modal
     await estimator1.getByRole('button', { name: 'Reveal Votes' }).click();
-    await expect(estimator1.getByText('Results')).toBeVisible({ timeout: 10000 });
+    await expect(estimator1.getByText('Majority result')).toBeVisible({ timeout: 10000 });
     await estimator1.getByRole('button', { name: 'New Round' }).click();
 
     // Both estimators should have their vote selections cleared
@@ -276,11 +276,9 @@ test.describe('Planning Poker Session', () => {
     await estimator1.getByRole('button', { name: 'Reveal Votes' }).click();
     await expect(estimator1.getByText('Consensus!')).toBeVisible({ timeout: 10000 });
 
-    // Click on the consensus value (5) to save to history
-    await estimator1.getByText(/Consensus! 5/).click();
-
+    // Consensus should auto-save to history (no click needed)
     // Verify the story appears in history sidebar with the vote value
-    const historyItem = estimator1.locator('li').filter({ hasText: 'User Login Feature' });
+    const historyItem = estimator1.locator('li').filter({ hasText: 'User Login Feature' }).first();
     await expect(historyItem).toBeVisible({ timeout: 10000 });
     await expect(historyItem).toContainText('5');
 

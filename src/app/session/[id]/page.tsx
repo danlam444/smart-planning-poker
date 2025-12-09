@@ -159,6 +159,8 @@ interface SessionState {
   name: string;
   participants: Participant[];
   revealed: boolean;
+  story?: string;
+  storyLocked?: boolean;
 }
 
 interface StoredParticipant {
@@ -168,6 +170,7 @@ interface StoredParticipant {
 }
 
 interface HistoryEntry {
+  id: string;
   story: string;
   vote: string;
   timestamp: number;
@@ -206,6 +209,7 @@ export default function SessionPage() {
   const [error, setError] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState(false);
   const [story, setStory] = useState('');
+  const [storyLocked, setStoryLocked] = useState(false);
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [customVote, setCustomVote] = useState('');
@@ -214,6 +218,13 @@ export default function SessionPage() {
   const myIdRef = useRef<string | null>(null);
   const bellAudioRef = useRef<HTMLAudioElement | null>(null);
   const participantNameRef = useRef<string | null>(null);
+  const storyRef = useRef<string>('');
+  const lastAutoSavedStoryRef = useRef<string>('');
+
+  // Keep storyRef in sync with story state
+  useEffect(() => {
+    storyRef.current = story;
+  }, [story]);
 
   useEffect(() => {
     const pusher = getPusherClient();
@@ -225,6 +236,29 @@ export default function SessionPage() {
         // Show results modal when votes are revealed
         if (state.revealed && !prev?.revealed) {
           setShowResultsModal(true);
+
+          // Auto-save to history on consensus if story name is entered
+          const consensusVote = getConsensusVote(state.participants);
+          const currentStory = storyRef.current.trim();
+          if (consensusVote && currentStory && currentStory !== lastAutoSavedStoryRef.current) {
+            lastAutoSavedStoryRef.current = currentStory;
+            const entry: HistoryEntry = {
+              id: crypto.randomUUID(),
+              story: currentStory,
+              vote: consensusVote,
+              timestamp: Date.now(),
+            };
+            setHistory(h => [...h, entry]);
+            setStory('');
+            setStoryLocked(false);
+            setCustomVote('');
+            // Clear story on server
+            fetch(`/api/sessions/${sessionId}/story`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ story: '', storyLocked: false }),
+            }).catch(console.error);
+          }
         }
         // Hide results modal when new round starts
         if (!state.revealed && prev?.revealed) {
@@ -237,6 +271,16 @@ export default function SessionPage() {
         const me = state.participants.find(p => p.id === myIdRef.current);
         if (me) {
           setSelectedCard(me.vote);
+        }
+      }
+      // Sync story from session state only when it's locked (set)
+      // This prevents overwriting a user's in-progress edits
+      if (state.storyLocked !== undefined) {
+        setStoryLocked(state.storyLocked);
+        // Only sync the story value when it's been set (locked) or cleared
+        if (state.storyLocked || state.story === '') {
+          setStory(state.story ?? '');
+          storyRef.current = state.story ?? '';
         }
       }
     });
@@ -257,6 +301,18 @@ export default function SessionPage() {
       setIsShaking(true);
       setTimeout(() => setIsShaking(false), 500);
     });
+
+    // Fetch session info for the join screen
+    fetch(`/api/sessions?id=${sessionId}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && !session) {
+          setSession(data);
+        }
+      })
+      .catch(() => {
+        // Ignore errors - session might not exist yet
+      });
 
     // Try to rejoin with stored participant info
     if (!hasAttemptedRejoin.current) {
@@ -425,6 +481,7 @@ export default function SessionPage() {
     if (!story.trim()) return;
 
     const entry: HistoryEntry = {
+      id: crypto.randomUUID(),
       story: story.trim(),
       vote,
       timestamp: Date.now(),
@@ -432,16 +489,33 @@ export default function SessionPage() {
 
     setHistory(prev => [...prev, entry]);
     setStory('');
+    setStoryLocked(false);
     setCustomVote('');
+    // Clear story on server
+    fetch(`/api/sessions/${sessionId}/story`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ story: '', storyLocked: false }),
+    }).catch(console.error);
     resetVotes();
-  }, [story, resetVotes]);
+  }, [story, sessionId, resetVotes]);
+
+  const updateStoryOnServer = useCallback((newStory: string, locked: boolean) => {
+    fetch(`/api/sessions/${sessionId}/story`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ story: newStory, storyLocked: locked }),
+    }).catch(console.error);
+  }, [sessionId]);
 
   if (!joined) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center p-8">
         <div className="max-w-md w-full space-y-8">
           <div className="text-center">
-            <h1 className="text-3xl font-bold mb-2">Join Planning Poker</h1>
+            <h1 className="text-3xl font-bold mb-2">
+              Join Planning Poker session:{session?.name ? ` ${session.name}` : ''}
+            </h1>
             <p className="text-gray-600 dark:text-gray-400">
               Enter your name to join the session
             </p>
@@ -531,7 +605,7 @@ export default function SessionPage() {
               <ul className="space-y-2">
                 {history.map((entry, index) => (
                   <li
-                    key={entry.timestamp}
+                    key={entry.id}
                     className="flex justify-between items-center p-2 bg-white dark:bg-gray-700 rounded"
                   >
                     <span className="text-sm truncate flex-1 mr-2">{entry.story}</span>
@@ -628,14 +702,41 @@ export default function SessionPage() {
           <label htmlFor="story" className="text-lg font-semibold">
             Story <span className="text-sm font-normal text-gray-500">(optional)</span>
           </label>
-          <input
-            type="text"
-            id="story"
-            value={story}
-            onChange={(e) => setStory(e.target.value)}
-            placeholder="Enter story title or ticket number..."
-            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800"
-          />
+          {storyLocked && story.trim() ? (
+            <div
+              onClick={() => {
+                setStoryLocked(false);
+                updateStoryOnServer(story, false);
+              }}
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+              title="Click to edit"
+            >
+              <span className="text-gray-900 dark:text-gray-100">{story}</span>
+            </div>
+          ) : (
+            <input
+              type="text"
+              id="story"
+              value={story}
+              onChange={(e) => setStory(e.target.value)}
+              onBlur={() => {
+                if (story.trim()) {
+                  setStoryLocked(true);
+                  updateStoryOnServer(story.trim(), true);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && story.trim()) {
+                  setStoryLocked(true);
+                  updateStoryOnServer(story.trim(), true);
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              placeholder="Enter story title or ticket number..."
+              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800"
+              autoFocus={!storyLocked && story.trim().length > 0}
+            />
+          )}
         </div>
 
         {/* Card Selection - Only show for estimators */}
@@ -731,6 +832,22 @@ export default function SessionPage() {
       </div>
     </main>
   );
+}
+
+function getConsensusVote(participants: Participant[]): string | null {
+  const allVotes = participants
+    .filter((p) => p.role === 'estimator')
+    .map((p) => p.vote)
+    .filter((v): v is string => v !== null);
+
+  if (allVotes.length < 2) return null;
+
+  // Check if all votes are the same
+  const firstVote = allVotes[0];
+  if (allVotes.every(v => v === firstVote)) {
+    return firstVote;
+  }
+  return null;
 }
 
 function getResultType(participants: Participant[]): 'consensus' | 'majority' | 'joint' | 'none' {
