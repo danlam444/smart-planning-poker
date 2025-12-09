@@ -165,6 +165,15 @@ export async function reset(sessionId: string): Promise<boolean> {
   return true;
 }
 
+export async function removeParticipant(sessionId: string, participantId: string): Promise<boolean> {
+  const session = await getSession(sessionId);
+  if (!session) return false;
+
+  session.participants = session.participants.filter(p => p.id !== participantId);
+  await updateSession(session);
+  return true;
+}
+
 export async function deleteSession(id: string): Promise<boolean> {
   const client = await getRedisClient();
   if (client) {

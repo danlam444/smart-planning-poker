@@ -385,6 +385,31 @@ export default function SessionPage() {
     }
   }, [sessionId]);
 
+  const leaveSession = useCallback(async () => {
+    if (!myId) return;
+
+    try {
+      await fetch(`/api/sessions/${sessionId}/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId: myId }),
+      });
+
+      // Clear local storage
+      localStorage.removeItem(getStorageKey(sessionId));
+
+      // Reset local state
+      setJoined(false);
+      setMyId(null);
+      myIdRef.current = null;
+      participantNameRef.current = null;
+      setSelectedCard(null);
+      setSession(null);
+    } catch (err) {
+      console.error('Failed to leave session:', err);
+    }
+  }, [sessionId, myId]);
+
   if (!joined) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center p-8">
@@ -485,13 +510,21 @@ export default function SessionPage() {
               </button>
             </div>
           </div>
-          <button
-            onClick={ringBell}
-            className="p-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg transition-colors"
-            title="Ring bell to get attention"
-          >
-            <BellIcon className="w-6 h-6" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={ringBell}
+              className="p-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg transition-colors"
+              title="Ring bell to get attention"
+            >
+              <BellIcon className="w-6 h-6" />
+            </button>
+            <button
+              onClick={leaveSession}
+              className="px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              Leave Session
+            </button>
+          </div>
         </div>
 
         {/* Participants */}
