@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { getPusherClient } from '@/lib/pusher-client';
-import { CARD_VALUES } from '@/types/poker';
+import { VOTING_SCALES, SCALE_ORDER, type VotingScale } from '@/types/poker';
 import type { Channel } from 'pusher-js';
 
 // Bell icon component
@@ -213,6 +213,7 @@ export default function SessionPage() {
   const [showResultsModal, setShowResultsModal] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [customVote, setCustomVote] = useState('');
+  const [votingScale, setVotingScale] = useState<VotingScale>('fibonacci');
   const channelRef = useRef<Channel | null>(null);
   const hasAttemptedRejoin = useRef(false);
   const myIdRef = useRef<string | null>(null);
@@ -436,6 +437,9 @@ export default function SessionPage() {
   const resetVotes = useCallback(async () => {
     setSelectedCard(null);
     setShowResultsModal(false);
+    setStory('');
+    setStoryLocked(false);
+    setCustomVote('');
     try {
       await fetch(`/api/sessions/${sessionId}/reset`, {
         method: 'POST',
@@ -742,22 +746,60 @@ export default function SessionPage() {
         {/* Card Selection - Only show for estimators */}
         {myRole === 'estimator' && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold">Your Vote</h2>
-            <div className="flex flex-wrap gap-3">
-              {CARD_VALUES.map((value) => (
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold">Your Vote</h2>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                ({VOTING_SCALES[votingScale].name})
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex flex-wrap gap-3 flex-1">
+                {VOTING_SCALES[votingScale].values.map((value) => (
+                  <button
+                    key={value}
+                    onClick={() => vote(value)}
+                    disabled={session?.revealed}
+                    className={`w-16 h-24 text-xl font-bold rounded-lg border-2 transition-all ${
+                      selectedCard === value
+                        ? 'bg-blue-600 text-white border-blue-600 scale-105'
+                        : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-blue-500 hover:scale-105'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {value}
+                  </button>
+                ))}
+              </div>
+              {/* Scale selector arrows */}
+              <div className="flex flex-col gap-1">
                 <button
-                  key={value}
-                  onClick={() => vote(value)}
-                  disabled={session?.revealed}
-                  className={`w-16 h-24 text-xl font-bold rounded-lg border-2 transition-all ${
-                    selectedCard === value
-                      ? 'bg-blue-600 text-white border-blue-600 scale-105'
-                      : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-blue-500 hover:scale-105'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  onClick={() => {
+                    const currentIndex = SCALE_ORDER.indexOf(votingScale);
+                    const prevIndex = (currentIndex - 1 + SCALE_ORDER.length) % SCALE_ORDER.length;
+                    setVotingScale(SCALE_ORDER[prevIndex]);
+                    setSelectedCard(null);
+                  }}
+                  className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  title="Previous scale"
                 >
-                  {value}
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                  </svg>
                 </button>
-              ))}
+                <button
+                  onClick={() => {
+                    const currentIndex = SCALE_ORDER.indexOf(votingScale);
+                    const nextIndex = (currentIndex + 1) % SCALE_ORDER.length;
+                    setVotingScale(SCALE_ORDER[nextIndex]);
+                    setSelectedCard(null);
+                  }}
+                  className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  title="Next scale"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -889,9 +931,16 @@ function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCust
     .map((p) => p.vote)
     .filter((v): v is string => v !== null);
 
+  if (allVotes.length === 0) {
+    return <p className="text-gray-600 dark:text-gray-400">No votes cast</p>;
+  }
+
   const numericVotes = allVotes
     .filter((v) => !isNaN(Number(v)))
     .map(Number);
+
+  // Check if we have numeric votes for statistics
+  const hasNumericVotes = numericVotes.length > 0;
 
   // Count occurrences of each vote
   const voteCounts = allVotes.reduce((acc, vote) => {
@@ -910,38 +959,37 @@ function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCust
   // Check if there's consensus (all votes are the same)
   const hasConsensus = allVotes.length > 1 && majorityVotes.length === 1 && maxCount === allVotes.length;
 
-  if (numericVotes.length === 0) {
-    return <p className="text-gray-600 dark:text-gray-400">No numeric votes cast</p>;
-  }
-
-  const average = numericVotes.reduce((a, b) => a + b, 0) / numericVotes.length;
-  const min = Math.min(...numericVotes);
-  const max = Math.max(...numericVotes);
+  const average = hasNumericVotes ? numericVotes.reduce((a, b) => a + b, 0) / numericVotes.length : 0;
+  const min = hasNumericVotes ? Math.min(...numericVotes) : 0;
+  const max = hasNumericVotes ? Math.max(...numericVotes) : 0;
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-4 text-center">
-        <div>
-          <div className="text-2xl font-bold">
-            {average.toFixed(1)}
+      {/* Only show Average/Min/Max for numeric scales */}
+      {hasNumericVotes && (
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <div className="text-2xl font-bold">
+              {average.toFixed(1)}
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">Average</div>
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">Average</div>
-        </div>
-        <div>
-          <div className="text-2xl font-bold">
-            {min}
+          <div>
+            <div className="text-2xl font-bold">
+              {min}
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">Min</div>
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">Min</div>
-        </div>
-        <div>
-          <div className="text-2xl font-bold">
-            {max}
+          <div>
+            <div className="text-2xl font-bold">
+              {max}
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400">Max</div>
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">Max</div>
         </div>
-      </div>
+      )}
       {hasConsensus ? (
-        <div className="text-center pt-2 border-t border-green-200 dark:border-green-800">
+        <div className={`text-center ${hasNumericVotes ? 'pt-2 border-t border-green-200 dark:border-green-800' : ''}`}>
           <div
             className={`text-2xl font-bold text-green-600 dark:text-green-400 ${canSelect ? 'cursor-pointer bg-green-50 dark:bg-green-900/30 border border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900 rounded-lg px-4 py-2 transition-colors inline-block' : ''}`}
             onClick={() => canSelect && onSelectVote?.((customVote || majorityVotes[0]))}
@@ -955,18 +1003,18 @@ function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCust
             <div className="mt-3">
               <input
                 type="text"
-                maxLength={2}
+                maxLength={3}
                 value={customVote || ''}
                 onChange={(e) => onCustomVoteChange?.(e.target.value)}
                 placeholder="?"
-                className="w-14 h-11 text-2xl font-bold text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-16 h-11 text-2xl font-bold text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Or input value to save history</div>
             </div>
           )}
         </div>
       ) : majorityVotes.length > 0 && (
-        <div className="text-center pt-2 border-t border-green-200 dark:border-green-800">
+        <div className={`text-center ${hasNumericVotes ? 'pt-2 border-t border-green-200 dark:border-green-800' : ''}`}>
           <div className="flex justify-center items-center gap-3">
             {majorityVotes.map((vote) => (
               <span
@@ -990,11 +1038,11 @@ function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCust
             <div className="mt-3">
               <input
                 type="text"
-                maxLength={2}
+                maxLength={3}
                 value={customVote || ''}
                 onChange={(e) => onCustomVoteChange?.(e.target.value)}
                 placeholder="?"
-                className="w-14 h-11 text-2xl font-bold text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-16 h-11 text-2xl font-bold text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Or input value to save history</div>
             </div>

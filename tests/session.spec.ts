@@ -227,9 +227,12 @@ test.describe('Planning Poker Session', () => {
     await expect(estimator1.getByText('Majority result')).toBeVisible({ timeout: 10000 });
     await estimator1.getByRole('button', { name: 'New Round' }).click();
 
+    // Wait for modal to close
+    await expect(estimator1.getByText('Majority result')).not.toBeVisible({ timeout: 10000 });
+
     // Both estimators should have their vote selections cleared
     // Cards should return to not-voted state (white background)
-    await expect(estimator1.locator('.bg-white.border-zinc-300').first()).toBeVisible();
+    await expect(estimator1.locator('.bg-white.border-zinc-300').first()).toBeVisible({ timeout: 10000 });
     await expect(estimator2.locator('.bg-white.border-zinc-300').first()).toBeVisible({ timeout: 10000 });
 
     // Vote buttons should no longer be highlighted for either user
@@ -329,6 +332,186 @@ test.describe('Planning Poker Session', () => {
 
     // Verify the story appears in history sidebar
     await expect(estimator1.getByText('Payment Integration')).toBeVisible();
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
+
+  test('estimator can switch voting scales using arrow buttons', async ({ page }) => {
+    // Create a new session
+    await page.goto('/');
+    await page.fill('#sessionName', 'Scale Switch Test');
+    await page.click('button[type="submit"]');
+
+    // Join as estimator
+    await page.fill('#name', 'Estimator');
+    await page.click('button[type="submit"]');
+    await expect(page.getByText('Estimators')).toBeVisible();
+
+    // Verify default scale is Story Points (fibonacci)
+    await expect(page.getByText('(Story Points)')).toBeVisible();
+    await expect(page.getByRole('button', { name: '13' })).toBeVisible();
+
+    // Click down arrow to switch to T-Shirt sizes
+    await page.locator('button[title="Next scale"]').click();
+
+    // Verify scale switched to T-Shirt Sizes
+    await expect(page.getByText('(T-Shirt Sizes)')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'XL', exact: true })).toBeVisible();
+    // Fibonacci values should not be visible
+    await expect(page.getByRole('button', { name: '13' })).not.toBeVisible();
+
+    // Click up arrow to switch back to Story Points
+    await page.locator('button[title="Previous scale"]').click();
+
+    // Verify scale switched back to Story Points
+    await expect(page.getByText('(Story Points)')).toBeVisible();
+    await expect(page.getByRole('button', { name: '13' })).toBeVisible();
+  });
+
+  test('t-shirt size voting shows only consensus without numeric stats', async ({ browser }) => {
+    // Create a new session
+    const context1 = await browser.newContext();
+    const estimator1 = await context1.newPage();
+
+    await estimator1.goto('/');
+    await estimator1.fill('#sessionName', 'T-Shirt Vote Test');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = estimator1.url();
+
+    // Estimator 1 joins
+    await estimator1.fill('#name', 'Estimator1');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1.getByText('Estimators')).toBeVisible();
+
+    // Switch to T-Shirt sizes
+    await estimator1.locator('button[title="Next scale"]').click();
+    await expect(estimator1.getByText('(T-Shirt Sizes)')).toBeVisible();
+
+    // Estimator 2 joins
+    const context2 = await browser.newContext();
+    const estimator2 = await context2.newPage();
+    await estimator2.goto(sessionUrl);
+    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.click('button[type="submit"]');
+    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+
+    // Estimator 2 also switches to T-Shirt sizes
+    await estimator2.locator('button[title="Next scale"]').click();
+
+    // Both vote for 'L'
+    await estimator1.getByRole('button', { name: 'L', exact: true }).click();
+    await estimator2.getByRole('button', { name: 'L', exact: true }).click();
+
+    // Reveal votes
+    await estimator1.getByRole('button', { name: 'Reveal Votes' }).click();
+
+    // Should show consensus without Average/Min/Max
+    await expect(estimator1.getByText('Consensus!')).toBeVisible({ timeout: 10000 });
+    await expect(estimator1.getByText('Average')).not.toBeVisible();
+    await expect(estimator1.getByText('Min')).not.toBeVisible();
+    await expect(estimator1.getByText('Max')).not.toBeVisible();
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
+
+  test('story name syncs between participants when locked', async ({ browser }) => {
+    // Create a new session
+    const context1 = await browser.newContext();
+    const estimator1 = await context1.newPage();
+
+    await estimator1.goto('/');
+    await estimator1.fill('#sessionName', 'Story Sync Test');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = estimator1.url();
+
+    // Estimator 1 joins
+    await estimator1.fill('#name', 'Estimator1');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1.getByText('Estimators')).toBeVisible();
+
+    // Estimator 2 joins
+    const context2 = await browser.newContext();
+    const estimator2 = await context2.newPage();
+    await estimator2.goto(sessionUrl);
+    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.click('button[type="submit"]');
+    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+
+    // Estimator 1 enters a story name and presses Enter to lock it
+    const storyInput = estimator1.locator('input[placeholder="Enter story title or ticket number..."]');
+    await storyInput.fill('Shared Story Name');
+    await storyInput.press('Enter');
+
+    // Wait for the field to become locked (displays as div instead of input)
+    await expect(estimator1.getByText('Shared Story Name')).toBeVisible();
+
+    // Estimator 2 should see the same story name
+    await expect(estimator2.getByText('Shared Story Name')).toBeVisible({ timeout: 10000 });
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
+
+  test('new round clears story name for all participants', async ({ browser }) => {
+    // Create a new session
+    const context1 = await browser.newContext();
+    const estimator1 = await context1.newPage();
+
+    await estimator1.goto('/');
+    await estimator1.fill('#sessionName', 'Story Clear Test');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = estimator1.url();
+
+    // Estimator 1 joins
+    await estimator1.fill('#name', 'Estimator1');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1.getByText('Estimators')).toBeVisible();
+
+    // Estimator 2 joins
+    const context2 = await browser.newContext();
+    const estimator2 = await context2.newPage();
+    await estimator2.goto(sessionUrl);
+    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.click('button[type="submit"]');
+    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+
+    // Estimator 1 enters and locks a story name
+    const storyInput = estimator1.locator('input[placeholder="Enter story title or ticket number..."]');
+    await storyInput.fill('Story To Be Cleared');
+    await storyInput.press('Enter');
+
+    // Verify story is visible for both
+    await expect(estimator1.getByText('Story To Be Cleared')).toBeVisible();
+    await expect(estimator2.getByText('Story To Be Cleared')).toBeVisible({ timeout: 10000 });
+
+    // Both vote
+    await estimator1.getByRole('button', { name: '5' }).click();
+    await estimator2.getByRole('button', { name: '5' }).click();
+
+    // Reveal and start new round
+    await estimator1.getByRole('button', { name: 'Reveal Votes' }).click();
+    await expect(estimator1.getByText('Consensus!')).toBeVisible({ timeout: 10000 });
+    await estimator1.getByRole('button', { name: 'New Round' }).click();
+
+    // Wait for modal to close
+    await expect(estimator1.getByText('Consensus!')).not.toBeVisible({ timeout: 10000 });
+
+    // Story input should be empty and visible again for both participants
+    const storyInput1 = estimator1.locator('input[placeholder="Enter story title or ticket number..."]');
+    const storyInput2 = estimator2.locator('input[placeholder="Enter story title or ticket number..."]');
+
+    await expect(storyInput1).toBeVisible({ timeout: 10000 });
+    await expect(storyInput1).toHaveValue('');
+    await expect(storyInput2).toBeVisible({ timeout: 10000 });
+    await expect(storyInput2).toHaveValue('');
 
     // Cleanup
     await context1.close();
