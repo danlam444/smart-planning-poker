@@ -222,7 +222,9 @@ test.describe('Planning Poker Session', () => {
     await expect(estimator1.getByRole('button', { name: '5' })).toHaveClass(/bg-blue-600/, { timeout: 10000 });
     await expect(estimator2.getByRole('button', { name: '8' })).toHaveClass(/bg-blue-600/, { timeout: 10000 });
 
-    // Estimator 1 clicks "New Round"
+    // Estimator 1 reveals votes to open the modal, then clicks "New Round" in the modal
+    await estimator1.getByRole('button', { name: 'Reveal Votes' }).click();
+    await expect(estimator1.getByText('Results')).toBeVisible({ timeout: 10000 });
     await estimator1.getByRole('button', { name: 'New Round' }).click();
 
     // Both estimators should have their vote selections cleared
@@ -233,6 +235,102 @@ test.describe('Planning Poker Session', () => {
     // Vote buttons should no longer be highlighted for either user
     await expect(estimator1.getByRole('button', { name: '5' })).not.toHaveClass(/bg-blue-600/);
     await expect(estimator2.getByRole('button', { name: '8' })).not.toHaveClass(/bg-blue-600/);
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
+
+  test('clicking result value saves story to history when story name is entered', async ({ browser }) => {
+    // Create a new session
+    const context1 = await browser.newContext();
+    const estimator1 = await context1.newPage();
+
+    await estimator1.goto('/');
+    await estimator1.fill('#sessionName', 'History Test Sprint');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = estimator1.url();
+
+    // Estimator 1 joins
+    await estimator1.fill('#name', 'Estimator1');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1.getByText('Estimators')).toBeVisible();
+
+    // Estimator 2 joins
+    const context2 = await browser.newContext();
+    const estimator2 = await context2.newPage();
+    await estimator2.goto(sessionUrl);
+    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.click('button[type="submit"]');
+    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+
+    // Enter a story name
+    await estimator1.fill('input[placeholder="Enter story title or ticket number..."]', 'User Login Feature');
+
+    // Both estimators vote the same value (consensus)
+    await estimator1.getByRole('button', { name: '5' }).click();
+    await estimator2.getByRole('button', { name: '5' }).click();
+
+    // Reveal votes
+    await estimator1.getByRole('button', { name: 'Reveal Votes' }).click();
+    await expect(estimator1.getByText('Consensus!')).toBeVisible({ timeout: 10000 });
+
+    // Click on the consensus value (5) to save to history
+    await estimator1.getByText(/Consensus! 5/).click();
+
+    // Verify the story appears in history sidebar with the vote value
+    const historyItem = estimator1.locator('li').filter({ hasText: 'User Login Feature' });
+    await expect(historyItem).toBeVisible({ timeout: 10000 });
+    await expect(historyItem).toContainText('5');
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
+
+  test('clicking majority result value saves story to history', async ({ browser }) => {
+    // Create a new session
+    const context1 = await browser.newContext();
+    const estimator1 = await context1.newPage();
+
+    await estimator1.goto('/');
+    await estimator1.fill('#sessionName', 'Majority History Test');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = estimator1.url();
+
+    // Estimator 1 joins
+    await estimator1.fill('#name', 'Estimator1');
+    await estimator1.click('button[type="submit"]');
+    await expect(estimator1.getByText('Estimators')).toBeVisible();
+
+    // Estimator 2 joins
+    const context2 = await browser.newContext();
+    const estimator2 = await context2.newPage();
+    await estimator2.goto(sessionUrl);
+    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.click('button[type="submit"]');
+    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+
+    // Enter a story name
+    await estimator1.fill('input[placeholder="Enter story title or ticket number..."]', 'Payment Integration');
+
+    // Estimators vote different values (no consensus, creates majority)
+    await estimator1.getByRole('button', { name: '5' }).click();
+    await estimator2.getByRole('button', { name: '8' }).click();
+
+    // Reveal votes
+    await estimator1.getByRole('button', { name: 'Reveal Votes' }).click();
+    await expect(estimator1.getByText('Average')).toBeVisible({ timeout: 10000 });
+
+    // Click on the majority value 5 in the second row (majority section)
+    // The majority values are in the last row, click on '5'
+    const majoritySection = estimator1.locator('.border-t.border-green-200');
+    await majoritySection.getByText('5').click();
+
+    // Verify the story appears in history sidebar
+    await expect(estimator1.getByText('Payment Integration')).toBeVisible();
 
     // Cleanup
     await context1.close();

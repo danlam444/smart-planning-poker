@@ -167,6 +167,12 @@ interface StoredParticipant {
   participantId: string;
 }
 
+interface HistoryEntry {
+  story: string;
+  vote: string;
+  timestamp: number;
+}
+
 function getStorageKey(sessionId: string) {
   return `poker-session-${sessionId}`;
 }
@@ -199,6 +205,10 @@ export default function SessionPage() {
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState(false);
+  const [story, setStory] = useState('');
+  const [showResultsModal, setShowResultsModal] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [customVote, setCustomVote] = useState('');
   const channelRef = useRef<Channel | null>(null);
   const hasAttemptedRejoin = useRef(false);
   const myIdRef = useRef<string | null>(null);
@@ -211,7 +221,17 @@ export default function SessionPage() {
     channelRef.current = channel;
 
     channel.bind('session-state', (state: SessionState) => {
-      setSession(state);
+      setSession(prev => {
+        // Show results modal when votes are revealed
+        if (state.revealed && !prev?.revealed) {
+          setShowResultsModal(true);
+        }
+        // Hide results modal when new round starts
+        if (!state.revealed && prev?.revealed) {
+          setShowResultsModal(false);
+        }
+        return state;
+      });
       // Sync selectedCard from session state if we have an ID
       if (myIdRef.current) {
         const me = state.participants.find(p => p.id === myIdRef.current);
@@ -351,6 +371,7 @@ export default function SessionPage() {
       await fetch(`/api/sessions/${sessionId}/reveal`, {
         method: 'POST',
       });
+      setShowResultsModal(true);
     } catch (err) {
       console.error('Failed to reveal:', err);
     }
@@ -358,6 +379,7 @@ export default function SessionPage() {
 
   const resetVotes = useCallback(async () => {
     setSelectedCard(null);
+    setShowResultsModal(false);
     try {
       await fetch(`/api/sessions/${sessionId}/reset`, {
         method: 'POST',
@@ -374,6 +396,20 @@ export default function SessionPage() {
   const ringBell = useCallback(async () => {
     if (!participantNameRef.current) return;
 
+    // Play bell sound and shake for the person who clicked
+    if (bellAudioRef.current) {
+      bellAudioRef.current.currentTime = 0;
+      bellAudioRef.current.play().catch(() => {
+        // Ignore autoplay errors
+      });
+    }
+    // Reset and trigger shake animation
+    setIsShaking(false);
+    requestAnimationFrame(() => {
+      setIsShaking(true);
+      setTimeout(() => setIsShaking(false), 600);
+    });
+
     try {
       await fetch(`/api/sessions/${sessionId}/bell`, {
         method: 'POST',
@@ -384,6 +420,21 @@ export default function SessionPage() {
       console.error('Failed to ring bell:', err);
     }
   }, [sessionId]);
+
+  const saveToHistory = useCallback((vote: string) => {
+    if (!story.trim()) return;
+
+    const entry: HistoryEntry = {
+      story: story.trim(),
+      vote,
+      timestamp: Date.now(),
+    };
+
+    setHistory(prev => [...prev, entry]);
+    setStory('');
+    setCustomVote('');
+    resetVotes();
+  }, [story, resetVotes]);
 
   if (!joined) {
     return (
@@ -467,7 +518,33 @@ export default function SessionPage() {
       {/* Hidden audio element for bell sound */}
       <audio ref={bellAudioRef} src="/bell.mp3" preload="auto" />
 
-      <div className="max-w-4xl mx-auto space-y-8">
+      <div className="flex gap-8 max-w-6xl mx-auto">
+        {/* History Sidebar */}
+        <div className="w-64 flex-shrink-0">
+          <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 sticky top-8">
+            <h2 className="text-lg font-semibold mb-4">History</h2>
+            {history.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                No stories estimated yet. Enter a story name and click on a result to save it.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {history.map((entry, index) => (
+                  <li
+                    key={entry.timestamp}
+                    className="flex justify-between items-center p-2 bg-white dark:bg-gray-700 rounded"
+                  >
+                    <span className="text-sm truncate flex-1 mr-2">{entry.story}</span>
+                    <span className="text-sm font-bold text-blue-600 dark:text-blue-400">{entry.vote}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 space-y-8">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
@@ -546,6 +623,21 @@ export default function SessionPage() {
           )}
         </div>
 
+        {/* Story field */}
+        <div className="space-y-2">
+          <label htmlFor="story" className="text-lg font-semibold">
+            Story <span className="text-sm font-normal text-gray-500">(optional)</span>
+          </label>
+          <input
+            type="text"
+            id="story"
+            value={story}
+            onChange={(e) => setStory(e.target.value)}
+            placeholder="Enter story title or ticket number..."
+            className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800"
+          />
+        </div>
+
         {/* Card Selection - Only show for estimators */}
         {myRole === 'estimator' && (
           <div className="space-y-4">
@@ -582,32 +674,98 @@ export default function SessionPage() {
         <div className="flex gap-4">
           <button
             onClick={revealVotes}
-            disabled={session?.revealed}
+            disabled={session?.revealed || !session?.participants.some(p => p.role === 'estimator' && p.vote !== null)}
             className="flex-1 py-3 px-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
           >
             Reveal Votes
           </button>
-          <button
-            onClick={resetVotes}
-            className="flex-1 py-3 px-4 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg transition-colors"
-          >
-            New Round
-          </button>
         </div>
 
-        {/* Results Summary */}
-        {session?.revealed && (
-          <div className="bg-green-100 dark:bg-green-900 rounded-lg p-6">
-            <h2 className="text-lg font-semibold mb-2">Results</h2>
-            <VoteSummary participants={session.participants} />
+        {/* Results Modal */}
+        {showResultsModal && session?.revealed && (() => {
+          const resultType = getResultType(session.participants);
+          const titlePrefix = resultType === 'consensus' ? 'Consensus result'
+            : resultType === 'majority' ? 'Majority result'
+            : resultType === 'joint' ? 'Joint Majority result'
+            : 'Result';
+          return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">
+                  {story ? `${titlePrefix} for ${story}` : titlePrefix}
+                </h2>
+                <button
+                  onClick={resetVotes}
+                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <VoteSummary
+                participants={session.participants}
+                onSelectVote={saveToHistory}
+                canSelect={!!story.trim()}
+                customVote={customVote}
+                onCustomVoteChange={setCustomVote}
+              />
+              <button
+                onClick={() => {
+                  if (customVote.trim() && story.trim()) {
+                    saveToHistory(customVote.trim());
+                  } else {
+                    resetVotes();
+                  }
+                }}
+                className="w-full mt-6 py-3 px-4 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg transition-colors"
+              >
+                New Round
+              </button>
+            </div>
           </div>
-        )}
+          );
+        })()}
+        </div>
       </div>
     </main>
   );
 }
 
-function VoteSummary({ participants }: { participants: Participant[] }) {
+function getResultType(participants: Participant[]): 'consensus' | 'majority' | 'joint' | 'none' {
+  const allVotes = participants
+    .filter((p) => p.role === 'estimator')
+    .map((p) => p.vote)
+    .filter((v): v is string => v !== null);
+
+  if (allVotes.length === 0) return 'none';
+
+  const voteCounts = allVotes.reduce((acc, vote) => {
+    acc[vote] = (acc[vote] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const maxCount = Math.max(...Object.values(voteCounts));
+  const majorityVotes = Object.entries(voteCounts)
+    .filter(([, count]) => count === maxCount)
+    .map(([vote]) => vote);
+
+  // Consensus: all votes are the same
+  if (allVotes.length > 1 && majorityVotes.length === 1 && maxCount === allVotes.length) {
+    return 'consensus';
+  }
+
+  // Joint majority: multiple values tied for the most votes
+  if (majorityVotes.length > 1) {
+    return 'joint';
+  }
+
+  // Single majority
+  return 'majority';
+}
+
+function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCustomVoteChange }: { participants: Participant[]; onSelectVote?: (vote: string) => void; canSelect?: boolean; customVote?: string; onCustomVoteChange?: (value: string) => void }) {
   // Only count votes from estimators
   const allVotes = participants
     .filter((p) => p.role === 'estimator')
@@ -647,32 +805,83 @@ function VoteSummary({ participants }: { participants: Participant[] }) {
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-4 text-center">
         <div>
-          <div className="text-2xl font-bold">{average.toFixed(1)}</div>
+          <div className="text-2xl font-bold">
+            {average.toFixed(1)}
+          </div>
           <div className="text-sm text-gray-600 dark:text-gray-400">Average</div>
         </div>
         <div>
-          <div className="text-2xl font-bold">{min}</div>
+          <div className="text-2xl font-bold">
+            {min}
+          </div>
           <div className="text-sm text-gray-600 dark:text-gray-400">Min</div>
         </div>
         <div>
-          <div className="text-2xl font-bold">{max}</div>
+          <div className="text-2xl font-bold">
+            {max}
+          </div>
           <div className="text-sm text-gray-600 dark:text-gray-400">Max</div>
         </div>
       </div>
       {hasConsensus ? (
         <div className="text-center pt-2 border-t border-green-200 dark:border-green-800">
-          <div className="text-2xl font-bold text-green-600 dark:text-green-400">Consensus!</div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            Everyone voted {majorityVotes[0]}
+          <div
+            className={`text-2xl font-bold text-green-600 dark:text-green-400 ${canSelect ? 'cursor-pointer bg-green-50 dark:bg-green-900/30 border border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900 rounded-lg px-4 py-2 transition-colors inline-block' : ''}`}
+            onClick={() => canSelect && onSelectVote?.((customVote || majorityVotes[0]))}
+          >
+            Consensus! {majorityVotes[0]}
           </div>
+          <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            {canSelect ? 'Click to save to history' : `Everyone voted ${majorityVotes[0]}`}
+          </div>
+          {canSelect && (
+            <div className="mt-3">
+              <input
+                type="text"
+                maxLength={2}
+                value={customVote || ''}
+                onChange={(e) => onCustomVoteChange?.(e.target.value)}
+                placeholder="?"
+                className="w-14 h-11 text-2xl font-bold text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Or input value to save history</div>
+            </div>
+          )}
         </div>
       ) : majorityVotes.length > 0 && (
         <div className="text-center pt-2 border-t border-green-200 dark:border-green-800">
-          <div className="text-2xl font-bold">{majorityVotes.join(', ')}</div>
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            {majorityVotes.length === 1 ? 'Majority Vote' : 'Joint Majority'}
-            {maxCount > 1 && ` (${maxCount} votes)`}
+          <div className="flex justify-center items-center gap-3">
+            {majorityVotes.map((vote) => (
+              <span
+                key={vote}
+                className={`text-2xl font-bold ${canSelect ? 'cursor-pointer bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900 rounded-lg px-4 py-2 transition-colors' : ''}`}
+                onClick={() => canSelect && onSelectVote?.((customVote || vote))}
+              >
+                {vote}
+              </span>
+            ))}
           </div>
+          <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+            {canSelect ? 'Click a value to save to history' : (
+              <>
+                {majorityVotes.length === 1 ? 'Majority Vote' : 'Joint Majority'}
+                {maxCount > 1 && ` (${maxCount} votes)`}
+              </>
+            )}
+          </div>
+          {canSelect && (
+            <div className="mt-3">
+              <input
+                type="text"
+                maxLength={2}
+                value={customVote || ''}
+                onChange={(e) => onCustomVoteChange?.(e.target.value)}
+                placeholder="?"
+                className="w-14 h-11 text-2xl font-bold text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Or input value to save history</div>
+            </div>
+          )}
         </div>
       )}
     </div>
