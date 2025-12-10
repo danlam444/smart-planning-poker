@@ -206,10 +206,10 @@ export default function SessionPage() {
   const [isShaking, setIsShaking] = useState(false);
   const [story, setStory] = useState('');
   const [storyLocked, setStoryLocked] = useState(false);
-  const [showResultsModal, setShowResultsModal] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [customVote, setCustomVote] = useState('');
   const [votingScale, setVotingScale] = useState<VotingScale>('fibonacci');
+  const [linkCopied, setLinkCopied] = useState(false);
   const channelRef = useRef<Channel | null>(null);
   const hasAttemptedRejoin = useRef(false);
   const myIdRef = useRef<string | null>(null);
@@ -230,11 +230,8 @@ export default function SessionPage() {
 
     channel.bind('session-state', (state: SessionState) => {
       setSession(prev => {
-        // Show results modal when votes are revealed
+        // Auto-save to history on consensus if story name is entered
         if (state.revealed && !prev?.revealed) {
-          setShowResultsModal(true);
-
-          // Auto-save to history on consensus if story name is entered
           const consensusVote = getConsensusVote(state.participants);
           const currentStory = storyRef.current.trim();
           if (consensusVote && currentStory && currentStory !== lastAutoSavedStoryRef.current) {
@@ -245,7 +242,14 @@ export default function SessionPage() {
               vote: consensusVote,
               timestamp: Date.now(),
             };
-            setHistory(h => [...h, entry]);
+            setHistory(h => {
+              const newHistory = [...h, entry];
+              // Keep only the last 8 items to prevent overflow
+              if (newHistory.length > 8) {
+                return newHistory.slice(-8);
+              }
+              return newHistory;
+            });
             setStory('');
             setStoryLocked(false);
             setCustomVote('');
@@ -256,10 +260,6 @@ export default function SessionPage() {
               body: JSON.stringify({ story: '', storyLocked: false }),
             }).catch(console.error);
           }
-        }
-        // Hide results modal when new round starts
-        if (!state.revealed && prev?.revealed) {
-          setShowResultsModal(false);
         }
         return state;
       });
@@ -424,7 +424,6 @@ export default function SessionPage() {
       await fetch(`/api/sessions/${sessionId}/reveal`, {
         method: 'POST',
       });
-      setShowResultsModal(true);
     } catch (err) {
       console.error('Failed to reveal:', err);
     }
@@ -432,7 +431,6 @@ export default function SessionPage() {
 
   const resetVotes = useCallback(async () => {
     setSelectedCard(null);
-    setShowResultsModal(false);
     setStory('');
     setStoryLocked(false);
     setCustomVote('');
@@ -447,6 +445,8 @@ export default function SessionPage() {
 
   const copyLink = useCallback(() => {
     navigator.clipboard.writeText(window.location.href);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
   }, []);
 
   const ringBell = useCallback(async () => {
@@ -487,7 +487,14 @@ export default function SessionPage() {
       timestamp: Date.now(),
     };
 
-    setHistory(prev => [...prev, entry]);
+    setHistory(prev => {
+      const newHistory = [...prev, entry];
+      // Keep only the last 8 items to prevent overflow
+      if (newHistory.length > 8) {
+        return newHistory.slice(-8);
+      }
+      return newHistory;
+    });
     setStory('');
     setStoryLocked(false);
     setCustomVote('');
@@ -634,9 +641,52 @@ export default function SessionPage() {
       <audio ref={bellAudioRef} src="/bell.mp3" preload="auto" />
 
       <div className="flex gap-5 max-w-6xl mx-auto p-5">
-        {/* History Sidebar */}
-        <div className="w-64 flex-shrink-0">
-          <div className="bg-white rounded-lg border border-[#e3e8ee] p-4 sticky top-5" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+        {/* Left Sidebar */}
+        <div className="w-64 flex-shrink-0 space-y-4">
+          {/* Results Panel */}
+          {(() => {
+            const isRevealed = session?.revealed ?? false;
+            const resultType = session ? getResultType(session.participants) : 'none';
+            const titlePrefix = isRevealed
+              ? (resultType === 'consensus' ? 'Consensus'
+                : resultType === 'majority' ? 'Majority'
+                : resultType === 'joint' ? 'Joint Majority'
+                : 'Result')
+              : 'Results';
+            return (
+              <div
+                className={`bg-white rounded-lg border p-4 transition-all ${
+                  isRevealed ? 'border-[#e3e8ee]' : 'border-[#e3e8ee] opacity-60'
+                }`}
+                style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
+              >
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h2 className="section-label">{titlePrefix}</h2>
+                    {story && (
+                      <p className="text-xs text-[#697386] mt-0.5 truncate">{story}</p>
+                    )}
+                  </div>
+                </div>
+                {isRevealed && session ? (
+                  <VoteSummary
+                    participants={session.participants}
+                    onSelectVote={saveToHistory}
+                    canSelect={!!story.trim()}
+                    customVote={customVote}
+                    onCustomVoteChange={setCustomVote}
+                  />
+                ) : (
+                  <div className="text-center py-6">
+                    <p className="text-sm text-[#8792a2]">Reveal votes to see results</p>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* History */}
+          <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <h2 className="section-label mb-3">History</h2>
             {history.length === 0 ? (
               <div className="text-center py-4">
@@ -669,14 +719,17 @@ export default function SessionPage() {
                 <span className="text-xs text-[#8792a2] font-mono">
                   {sessionId.slice(0, 8)}...
                 </span>
-                <button
-                  onClick={copyLink}
-                  className="inline-flex items-center gap-1 text-xs text-[#635bff] hover:text-[#5449e0] font-medium"
-                  title="Copy invite link"
-                >
-                  <CopyIcon className="w-3 h-3" />
-                  Copy link
-                </button>
+                {linkCopied ? (
+                  <span className="text-xs text-[#30c48d] font-medium">Link copied!</span>
+                ) : (
+                  <button
+                    onClick={copyLink}
+                    className="inline-flex items-center text-[#635bff] hover:text-[#5449e0]"
+                    title="Copy invite link"
+                  >
+                    <CopyIcon className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
             <button
@@ -692,53 +745,41 @@ export default function SessionPage() {
 
         {/* Participants */}
         <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
-          {/* Estimators */}
-          {session?.participants.some((p) => p.role === 'estimator') && (
-            <div className="mb-4">
-              <h3 className="section-label mb-3">Estimators</h3>
-              <div className="flex flex-wrap gap-3">
-                {session?.participants.filter((p) => p.role === 'estimator').map((p: Participant) => (
-                  <ParticipantCard
-                    key={p.id}
-                    participant={p}
-                    isMe={p.id === myId}
-                    revealed={session?.revealed ?? false}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Observers */}
-          {session?.participants.some((p) => p.role === 'observer') && (
-            <div>
-              <h3 className="section-label mb-3">Observers</h3>
-              <div className="flex flex-wrap gap-3">
-                {session?.participants.filter((p) => p.role === 'observer').map((p: Participant) => (
-                  <div key={p.id} className="flex flex-col items-center gap-2">
-                    <div
-                      className={`relative w-16 h-24 rounded-lg bg-[#f6f9fc] border border-[#e3e8ee] ${
-                        p.id === myId ? 'ring-2 ring-[#635bff] ring-offset-2' : ''
-                      }`}
-                      style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
-                    >
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <svg className="w-6 h-6 text-[#8792a2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                        </svg>
-                      </div>
-                    </div>
-                    <span className={`text-xs font-medium truncate max-w-16 ${
-                      p.id === myId ? 'text-[#635bff] font-semibold' : 'text-[#3c4257]'
-                    }`}>
-                      {p.name}
-                    </span>
+          <h3 className="section-label mb-3">Participants</h3>
+          <div className="flex flex-wrap gap-3">
+            {/* Estimators */}
+            {session?.participants.filter((p) => p.role === 'estimator').map((p: Participant) => (
+              <ParticipantCard
+                key={p.id}
+                participant={p}
+                isMe={p.id === myId}
+                revealed={session?.revealed ?? false}
+              />
+            ))}
+            {/* Observers */}
+            {session?.participants.filter((p) => p.role === 'observer').map((p: Participant) => (
+              <div key={p.id} className="flex flex-col items-center gap-2">
+                <div
+                  className={`relative w-16 h-24 rounded-lg bg-[#f6f9fc] border border-[#e3e8ee] ${
+                    p.id === myId ? 'ring-2 ring-[#635bff] ring-offset-2' : ''
+                  }`}
+                  style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
+                >
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-[#8792a2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
                   </div>
-                ))}
+                </div>
+                <span className={`text-xs font-medium truncate max-w-16 ${
+                  p.id === myId ? 'text-[#635bff] font-semibold' : 'text-[#3c4257]'
+                }`}>
+                  {p.name}
+                </span>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
 
         {/* Story field */}
@@ -779,6 +820,7 @@ export default function SessionPage() {
               placeholder="Enter story title or ticket number..."
               className="input"
               autoFocus={!storyLocked && story.trim().length > 0}
+              autoComplete="off"
             />
           )}
         </div>
@@ -869,77 +911,70 @@ export default function SessionPage() {
 
         {/* Controls */}
         <div>
-          <button
-            onClick={revealVotes}
-            disabled={session?.revealed || !session?.participants.some(p => p.role === 'estimator' && p.vote !== null)}
-            className="btn btn-success w-full py-3.5 text-base"
-          >
-            <span className="flex items-center justify-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-              </svg>
-              Reveal Votes
-            </span>
-          </button>
+          {session?.revealed ? (
+            <button
+              onClick={() => {
+                if (customVote.trim() && story.trim()) {
+                  saveToHistory(customVote.trim());
+                } else {
+                  resetVotes();
+                }
+              }}
+              className="btn btn-warning w-full py-3.5 text-base"
+            >
+              <span className="flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                New Round
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={revealVotes}
+              disabled={!session?.participants.some(p => p.role === 'estimator' && p.vote !== null)}
+              className="btn btn-success w-full py-3.5 text-base"
+            >
+              <span className="flex items-center justify-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                Reveal Votes
+              </span>
+            </button>
+          )}
         </div>
 
-        {/* Results Modal */}
-        {showResultsModal && session?.revealed && (() => {
-          const resultType = getResultType(session.participants);
-          const titlePrefix = resultType === 'consensus' ? 'Consensus result'
-            : resultType === 'majority' ? 'Majority result'
-            : resultType === 'joint' ? 'Joint Majority result'
-            : 'Result';
-          return (
-          <div className="fixed inset-0 bg-[#1a1f36]/60 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 border border-[#e3e8ee]" style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
-              <div className="flex justify-between items-start mb-5">
-                <div>
-                  <h2 className="text-lg font-semibold text-[#1a1f36]">
-                    {titlePrefix}
-                  </h2>
-                  {story && (
-                    <p className="text-sm text-[#697386] mt-0.5">{story}</p>
-                  )}
-                </div>
-                <button
-                  onClick={resetVotes}
-                  className="p-1.5 rounded-md text-[#8792a2] hover:text-[#3c4257] hover:bg-[#f6f9fc] transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <VoteSummary
-                participants={session.participants}
-                onSelectVote={saveToHistory}
-                canSelect={!!story.trim()}
-                customVote={customVote}
-                onCustomVoteChange={setCustomVote}
-              />
-              <button
-                onClick={() => {
-                  if (customVote.trim() && story.trim()) {
-                    saveToHistory(customVote.trim());
-                  } else {
-                    resetVotes();
-                  }
-                }}
-                className="btn btn-warning w-full mt-6 py-3"
-              >
-                <span className="flex items-center justify-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  New Round
-                </span>
-              </button>
+        </div>
+
+        {/* Right Sidebar Ads */}
+        <div className="w-72 flex-shrink-0 space-y-4">
+          <div className="bg-white rounded-lg border border-[#e3e8ee] p-2 sticky top-5" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+            <div
+              className="w-full h-[250px] bg-[#f6f9fc] rounded border border-dashed border-[#c1c9d2] flex items-center justify-center"
+            >
+              <span className="text-xs text-[#8792a2]">Ad 250×250</span>
             </div>
           </div>
-          );
-        })()}
+          <div className="bg-white rounded-lg border border-[#e3e8ee] p-2" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+            <div
+              className="w-full h-[280px] bg-[#f6f9fc] rounded border border-dashed border-[#c1c9d2] flex items-center justify-center"
+            >
+              <span className="text-xs text-[#8792a2]">Ad 336×280</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer Ad Placeholder */}
+      <div className="max-w-6xl mx-auto px-5 pb-5">
+        <div className="bg-white rounded-lg border border-[#e3e8ee] p-2" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+          <div
+            className="w-full h-[90px] bg-[#f6f9fc] rounded border border-dashed border-[#c1c9d2] flex items-center justify-center"
+          >
+            <span className="text-xs text-[#8792a2]">Ad 728×90</span>
+          </div>
         </div>
       </div>
     </main>
@@ -1080,7 +1115,7 @@ function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCust
                 placeholder="?"
                 className="w-16 h-12 text-2xl font-semibold text-center border border-[#e3e8ee] rounded-md bg-white text-[#1a1f36] focus:outline-none focus:ring-2 focus:ring-[#635bff]/20 focus:border-[#635bff]"
               />
-              <div className="text-xs text-[#8792a2] mt-1.5">Or input custom value</div>
+              <div className="text-xs text-[#8792a2] mt-1.5">Or input value</div>
             </div>
           )}
         </div>
@@ -1116,7 +1151,7 @@ function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCust
                 placeholder="?"
                 className="w-16 h-12 text-2xl font-semibold text-center border border-[#e3e8ee] rounded-md bg-white text-[#1a1f36] focus:outline-none focus:ring-2 focus:ring-[#635bff]/20 focus:border-[#635bff]"
               />
-              <div className="text-xs text-[#8792a2] mt-1.5">Or input custom value</div>
+              <div className="text-xs text-[#8792a2] mt-1.5">Or input value</div>
             </div>
           )}
         </div>
