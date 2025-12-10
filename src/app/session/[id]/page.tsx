@@ -24,6 +24,22 @@ function BellIcon({ className }: { className?: string }) {
   );
 }
 
+// Exit/Leave icon component (door with arrow)
+function ExitIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      className={className}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+    </svg>
+  );
+}
+
 // Copy icon component (two squares)
 function CopyIcon({ className }: { className?: string }) {
   return (
@@ -477,6 +493,19 @@ export default function SessionPage() {
     }
   }, [sessionId]);
 
+  const leaveSession = useCallback(() => {
+    // Clear stored participant info
+    localStorage.removeItem(getStorageKey(sessionId));
+    // Reset state to show join form
+    setJoined(false);
+    setMyId(null);
+    myIdRef.current = null;
+    participantNameRef.current = null;
+    setMyRole('estimator');
+    setSelectedCard(null);
+    setParticipantName('');
+  }, [sessionId]);
+
   const saveToHistory = useCallback((vote: string) => {
     if (!story.trim()) return;
 
@@ -732,14 +761,23 @@ export default function SessionPage() {
                 )}
               </div>
             </div>
-            <button
-              onClick={ringBell}
-              className="p-2.5 bg-[#635bff] hover:bg-[#5449e0] text-white rounded-md transition-all"
-              style={{ boxShadow: '0 2px 4px rgba(99, 91, 255, 0.3)' }}
-              title="Ring bell to get attention"
-            >
-              <BellIcon className="w-5 h-5" />
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={ringBell}
+                className="p-2.5 bg-[#635bff] hover:bg-[#5449e0] text-white rounded-md transition-all"
+                style={{ boxShadow: '0 2px 4px rgba(99, 91, 255, 0.3)' }}
+                title="Ring bell to get attention"
+              >
+                <BellIcon className="w-5 h-5" />
+              </button>
+              <button
+                onClick={leaveSession}
+                className="p-2.5 bg-[#f6f9fc] hover:bg-[#e3e8ee] text-[#697386] rounded-md transition-all border border-[#e3e8ee]"
+                title="Leave session"
+              >
+                <ExitIcon className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
 
