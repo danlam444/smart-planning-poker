@@ -94,7 +94,7 @@ function SheepIcon({ className, variant = 'dark' }: { className?: string; varian
   );
 }
 
-// Participant card component - playing card style
+// Participant card component - Stripe style
 function ParticipantCard({
   participant,
   isMe,
@@ -109,36 +109,32 @@ function ParticipantCard({
   return (
     <div className="flex flex-col items-center gap-2">
       <div
-        className={`relative w-20 h-28 rounded-lg border-2 shadow-md transition-all ${
-          isMe ? 'ring-2 ring-blue-500 ring-offset-2' : ''
+        className={`relative w-16 h-24 rounded-lg transition-all duration-200 ${
+          isMe ? 'ring-2 ring-[#635bff] ring-offset-2' : ''
         } ${
           hasVoted
-            ? 'bg-zinc-700 border-zinc-600'
-            : 'bg-white border-zinc-300'
+            ? 'bg-[#635bff]'
+            : 'bg-white border border-[#e3e8ee]'
         }`}
+        style={{ boxShadow: hasVoted ? '0 4px 12px rgba(99, 91, 255, 0.3)' : '0 2px 4px rgba(0,0,0,0.04)' }}
       >
-        {/* Inner border */}
-        <div
-          className={`absolute inset-2 rounded border-2 ${
-            hasVoted ? 'border-zinc-500' : 'border-zinc-200'
-          }`}
-        />
-
-        {/* Card content */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           {revealed && hasVoted ? (
-            <span className="text-2xl font-bold text-white">{participant.vote}</span>
+            <span className="text-2xl font-semibold text-white">{participant.vote}</span>
           ) : hasVoted ? (
             <>
-              <img src="/sheep-voted.svg" alt="Voted" className="w-14 h-14" />
-              <span className="text-[10px] font-bold text-white tracking-wider mt-1">VOTED</span>
+              <svg className="w-8 h-8 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
             </>
           ) : (
-            <img src="/sheep-not-voted.svg" alt="Not voted" className="w-14 h-14" />
+            <span className="text-2xl text-[#8792a2]">?</span>
           )}
         </div>
       </div>
-      <span className={`text-sm font-medium truncate max-w-20 ${isMe ? 'text-blue-600 dark:text-blue-400' : ''}`}>
+      <span className={`text-xs font-medium truncate max-w-16 ${
+        isMe ? 'text-[#635bff] font-semibold' : 'text-[#3c4257]'
+      }`}>
         {participant.name}
       </span>
     </div>
@@ -514,106 +510,147 @@ export default function SessionPage() {
 
   if (!joined) {
     return (
-      <main className="min-h-screen flex flex-col items-center justify-center p-8">
-        <div className="max-w-md w-full space-y-8">
-          <div className="text-center">
-            <h1 className="text-3xl font-bold mb-2">
-              Join Planning Poker session:{session?.name ? ` ${session.name}` : ''}
+      <main className="min-h-screen flex flex-col items-center justify-center p-6" style={{ background: '#f6f9fc' }}>
+        <div className="max-w-sm w-full">
+          {/* Header */}
+          <div className="text-center mb-6">
+            <h1 className="text-xl font-semibold text-[#1a1f36] mb-1">
+              Planning Poker
             </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Enter your name to join the session
-            </p>
+            {session?.name && (
+              <p className="text-sm text-[#697386]">{session.name}</p>
+            )}
           </div>
 
           {error && (
-            <div className="bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-100 p-4 rounded-lg">
-              {error}
+            <div className="mb-4 p-3 rounded-md bg-red-50 border border-red-200">
+              <p className="text-sm text-red-600">{error}</p>
             </div>
           )}
 
-          <form onSubmit={joinSession} className="space-y-4">
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium mb-2">
-                Your Name
-              </label>
-              <input
-                type="text"
-                id="name"
-                value={participantName}
-                onChange={(e) => setParticipantName(e.target.value)}
-                placeholder="John Doe"
-                className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800"
-                required
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Join as
-              </label>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="role"
-                    value="estimator"
-                    checked={selectedRole === 'estimator'}
-                    onChange={() => setSelectedRole('estimator')}
-                    className="w-4 h-4 text-blue-600"
-                  />
-                  <span>Estimator</span>
-                  <span className="text-xs text-gray-500">(can vote)</span>
+          <div className="bg-white rounded-lg border border-[#e3e8ee] p-6" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+            <form onSubmit={joinSession} className="space-y-4">
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-[#3c4257] mb-1.5">
+                  Your name
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="role"
-                    value="observer"
-                    checked={selectedRole === 'observer'}
-                    onChange={() => setSelectedRole('observer')}
-                    className="w-4 h-4 text-blue-600"
-                  />
-                  <span>Observer</span>
-                  <span className="text-xs text-gray-500">(view only)</span>
-                </label>
+                <input
+                  type="text"
+                  id="name"
+                  value={participantName}
+                  onChange={(e) => setParticipantName(e.target.value)}
+                  placeholder="Enter your name"
+                  className="input"
+                  required
+                  autoFocus
+                />
               </div>
-            </div>
-            <button
-              type="submit"
-              disabled={!participantName.trim()}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
-            >
-              Join Session
-            </button>
-          </form>
+
+              <div>
+                <label className="block text-sm font-medium text-[#3c4257] mb-2">
+                  Role
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label
+                    className={`relative flex flex-col items-center p-3 rounded-md cursor-pointer transition-all border ${
+                      selectedRole === 'estimator'
+                        ? 'border-[#635bff] bg-[#f5f8ff]'
+                        : 'border-[#e3e8ee] hover:border-[#c1c9d2]'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="role"
+                      value="estimator"
+                      checked={selectedRole === 'estimator'}
+                      onChange={() => setSelectedRole('estimator')}
+                      className="sr-only"
+                    />
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center mb-1.5 ${
+                      selectedRole === 'estimator'
+                        ? 'bg-[#635bff] text-white'
+                        : 'bg-[#f6f9fc] text-[#8792a2]'
+                    }`}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                    </div>
+                    <span className={`text-sm font-medium ${
+                      selectedRole === 'estimator' ? 'text-[#635bff]' : 'text-[#3c4257]'
+                    }`}>Estimator</span>
+                    <span className="text-xs text-[#8792a2]">Can vote</span>
+                  </label>
+
+                  <label
+                    className={`relative flex flex-col items-center p-3 rounded-md cursor-pointer transition-all border ${
+                      selectedRole === 'observer'
+                        ? 'border-[#635bff] bg-[#f5f8ff]'
+                        : 'border-[#e3e8ee] hover:border-[#c1c9d2]'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="role"
+                      value="observer"
+                      checked={selectedRole === 'observer'}
+                      onChange={() => setSelectedRole('observer')}
+                      className="sr-only"
+                    />
+                    <div className={`w-8 h-8 rounded-md flex items-center justify-center mb-1.5 ${
+                      selectedRole === 'observer'
+                        ? 'bg-[#635bff] text-white'
+                        : 'bg-[#f6f9fc] text-[#8792a2]'
+                    }`}>
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </div>
+                    <span className={`text-sm font-medium ${
+                      selectedRole === 'observer' ? 'text-[#635bff]' : 'text-[#3c4257]'
+                    }`}>Observer</span>
+                    <span className="text-xs text-[#8792a2]">View only</span>
+                  </label>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={!participantName.trim()}
+                className="btn btn-primary w-full mt-2"
+              >
+                Join Session
+              </button>
+            </form>
+          </div>
         </div>
       </main>
     );
   }
 
   return (
-    <main className={`min-h-screen p-8 ${isShaking ? 'animate-shake' : ''}`}>
+    <main className={`min-h-screen ${isShaking ? 'animate-shake' : ''}`} style={{ background: '#f6f9fc' }}>
       {/* Hidden audio element for bell sound */}
       <audio ref={bellAudioRef} src="/bell.mp3" preload="auto" />
 
-      <div className="flex gap-8 max-w-6xl mx-auto">
+      <div className="flex gap-5 max-w-6xl mx-auto p-5">
         {/* History Sidebar */}
         <div className="w-64 flex-shrink-0">
-          <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 sticky top-8">
-            <h2 className="text-lg font-semibold mb-4">History</h2>
+          <div className="bg-white rounded-lg border border-[#e3e8ee] p-4 sticky top-5" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+            <h2 className="section-label mb-3">History</h2>
             {history.length === 0 ? (
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                No stories estimated yet. Enter a story name and click on a result to save it.
-              </p>
+              <div className="text-center py-4">
+                <p className="text-sm text-[#8792a2]">No stories yet</p>
+              </div>
             ) : (
               <ul className="space-y-2">
-                {history.map((entry, index) => (
+                {history.map((entry) => (
                   <li
                     key={entry.id}
-                    className="flex justify-between items-center p-2 bg-white dark:bg-gray-700 rounded"
+                    className="flex justify-between items-center p-2.5 bg-[#f6f9fc] rounded-md hover:bg-[#e3e8ee] transition-colors"
                   >
-                    <span className="text-sm truncate flex-1 mr-2">{entry.story}</span>
-                    <span className="text-sm font-bold text-blue-600 dark:text-blue-400">{entry.vote}</span>
+                    <span className="text-sm truncate flex-1 mr-2 text-[#3c4257]">{entry.story}</span>
+                    <span className="text-sm font-semibold text-[#635bff] bg-[#f5f8ff] px-2 py-0.5 rounded">{entry.vote}</span>
                   </li>
                 ))}
               </ul>
@@ -622,42 +659,44 @@ export default function SessionPage() {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 space-y-8">
+        <div className="flex-1 space-y-4">
         {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold">{session?.name || 'Planning Poker'}</h1>
-            <div className="flex items-center gap-2">
-              <p className="text-gray-600 dark:text-gray-400 text-sm">
-                Session ID: {sessionId}
-              </p>
-              <button
-                onClick={copyLink}
-                className="p-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
-                title="Copy invite link"
-              >
-                <CopyIcon className="w-4 h-4" />
-              </button>
+        <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-lg font-semibold text-[#1a1f36]">{session?.name || 'Planning Poker'}</h1>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-xs text-[#8792a2] font-mono">
+                  {sessionId.slice(0, 8)}...
+                </span>
+                <button
+                  onClick={copyLink}
+                  className="inline-flex items-center gap-1 text-xs text-[#635bff] hover:text-[#5449e0] font-medium"
+                  title="Copy invite link"
+                >
+                  <CopyIcon className="w-3 h-3" />
+                  Copy link
+                </button>
+              </div>
             </div>
+            <button
+              onClick={ringBell}
+              className="p-2.5 bg-[#635bff] hover:bg-[#5449e0] text-white rounded-md transition-all"
+              style={{ boxShadow: '0 2px 4px rgba(99, 91, 255, 0.3)' }}
+              title="Ring bell to get attention"
+            >
+              <BellIcon className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            onClick={ringBell}
-            className="p-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg transition-colors"
-            title="Ring bell to get attention"
-          >
-            <BellIcon className="w-6 h-6" />
-          </button>
         </div>
 
         {/* Participants */}
-        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-6">
-          <h2 className="text-lg font-semibold mb-4">Participants</h2>
-
+        <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
           {/* Estimators */}
           {session?.participants.some((p) => p.role === 'estimator') && (
             <div className="mb-4">
-              <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Estimators</h3>
-              <div className="flex flex-wrap gap-4">
+              <h3 className="section-label mb-3">Estimators</h3>
+              <div className="flex flex-wrap gap-3">
                 {session?.participants.filter((p) => p.role === 'estimator').map((p: Participant) => (
                   <ParticipantCard
                     key={p.id}
@@ -673,25 +712,26 @@ export default function SessionPage() {
           {/* Observers */}
           {session?.participants.some((p) => p.role === 'observer') && (
             <div>
-              <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Observers</h3>
-              <div className="flex flex-wrap gap-4">
+              <h3 className="section-label mb-3">Observers</h3>
+              <div className="flex flex-wrap gap-3">
                 {session?.participants.filter((p) => p.role === 'observer').map((p: Participant) => (
                   <div key={p.id} className="flex flex-col items-center gap-2">
                     <div
-                      className={`relative w-20 h-28 rounded-lg border-2 shadow-md bg-purple-100 border-purple-300 ${
-                        p.id === myId ? 'ring-2 ring-purple-500 ring-offset-2' : ''
+                      className={`relative w-16 h-24 rounded-lg bg-[#f6f9fc] border border-[#e3e8ee] ${
+                        p.id === myId ? 'ring-2 ring-[#635bff] ring-offset-2' : ''
                       }`}
+                      style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
                     >
-                      <div className="absolute inset-2 rounded border-2 border-purple-200" />
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <img
-                          src="/sheep-not-voted.svg"
-                          alt="Observer"
-                          className="w-14 h-14 hue-rotate-[260deg] saturate-50"
-                        />
+                        <svg className="w-6 h-6 text-[#8792a2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
                       </div>
                     </div>
-                    <span className={`text-sm font-medium truncate max-w-20 ${p.id === myId ? 'text-purple-600 dark:text-purple-400' : ''}`}>
+                    <span className={`text-xs font-medium truncate max-w-16 ${
+                      p.id === myId ? 'text-[#635bff] font-semibold' : 'text-[#3c4257]'
+                    }`}>
                       {p.name}
                     </span>
                   </div>
@@ -702,9 +742,9 @@ export default function SessionPage() {
         </div>
 
         {/* Story field */}
-        <div className="space-y-2">
-          <label htmlFor="story" className="text-lg font-semibold">
-            Story <span className="text-sm font-normal text-gray-500">(optional)</span>
+        <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+          <label htmlFor="story" className="section-label block mb-2">
+            Story <span className="font-normal lowercase">(optional)</span>
           </label>
           {storyLocked && story.trim() ? (
             <div
@@ -712,10 +752,10 @@ export default function SessionPage() {
                 setStoryLocked(false);
                 updateStoryOnServer(story, false);
               }}
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+              className="w-full px-3 py-2 rounded-md bg-[#f5f8ff] border border-[#635bff]/20 cursor-pointer hover:bg-[#e0e7ff] transition-colors"
               title="Click to edit"
             >
-              <span className="text-gray-900 dark:text-gray-100">{story}</span>
+              <span className="text-[#1a1f36] font-medium text-sm">{story}</span>
             </div>
           ) : (
             <input
@@ -737,7 +777,7 @@ export default function SessionPage() {
                 }
               }}
               placeholder="Enter story title or ticket number..."
-              className="w-full px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-800"
+              className="input"
               autoFocus={!storyLocked && story.trim().length > 0}
             />
           )}
@@ -745,25 +785,26 @@ export default function SessionPage() {
 
         {/* Card Selection - Only show for estimators */}
         {myRole === 'estimator' && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold">Your Vote</h2>
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                ({VOTING_SCALES[votingScale].name})
+          <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="section-label">Your Vote</h2>
+              <span className="text-xs font-medium px-2 py-0.5 rounded bg-[#f6f9fc] text-[#697386] border border-[#e3e8ee]">
+                {VOTING_SCALES[votingScale].name}
               </span>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex flex-wrap gap-3 flex-1">
+            <div className="flex items-center gap-4">
+              <div className="flex flex-wrap gap-2 flex-1">
                 {VOTING_SCALES[votingScale].values.map((value) => (
                   <button
                     key={value}
                     onClick={() => vote(value)}
                     disabled={session?.revealed}
-                    className={`w-16 h-24 text-xl font-bold rounded-lg border-2 transition-all ${
+                    className={`w-14 h-20 text-lg font-semibold rounded-md border transition-all duration-150 ${
                       selectedCard === value
-                        ? 'bg-blue-600 text-white border-blue-600 scale-105'
-                        : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:border-blue-500 hover:scale-105'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        ? 'bg-[#635bff] text-white border-[#635bff]'
+                        : 'bg-white border-[#e3e8ee] text-[#1a1f36] hover:border-[#635bff] hover:shadow-sm'
+                    } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-[#e3e8ee] disabled:hover:shadow-none`}
+                    style={{ boxShadow: selectedCard === value ? '0 4px 12px rgba(99, 91, 255, 0.3)' : '0 1px 2px rgba(0,0,0,0.04)' }}
                   >
                     {value}
                   </button>
@@ -778,10 +819,10 @@ export default function SessionPage() {
                     setVotingScale(SCALE_ORDER[prevIndex]);
                     setSelectedCard(null);
                   }}
-                  className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  className="p-2 rounded-md border border-[#e3e8ee] bg-[#f6f9fc] hover:bg-[#e3e8ee] transition-colors text-[#697386]"
                   title="Previous scale"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                   </svg>
                 </button>
@@ -792,10 +833,10 @@ export default function SessionPage() {
                     setVotingScale(SCALE_ORDER[nextIndex]);
                     setSelectedCard(null);
                   }}
-                  className="p-2 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                  className="p-2 rounded-md border border-[#e3e8ee] bg-[#f6f9fc] hover:bg-[#e3e8ee] transition-colors text-[#697386]"
                   title="Next scale"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
@@ -806,21 +847,40 @@ export default function SessionPage() {
 
         {/* Observer notice */}
         {myRole === 'observer' && (
-          <div className="bg-purple-100 dark:bg-purple-900 rounded-lg p-4 text-center">
-            <p className="text-purple-700 dark:text-purple-300">
-              You are observing this session. You can reveal votes and start new rounds, but cannot vote.
-            </p>
+          <div className="bg-[#f5f8ff] rounded-lg p-4 border border-[#e0e7ff]">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-md bg-[#635bff] flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-[#1a1f36]">
+                  You&apos;re observing this session
+                </p>
+                <p className="text-xs text-[#697386] mt-0.5">
+                  You can reveal votes and start new rounds, but cannot vote.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
         {/* Controls */}
-        <div className="flex gap-4">
+        <div>
           <button
             onClick={revealVotes}
             disabled={session?.revealed || !session?.participants.some(p => p.role === 'estimator' && p.vote !== null)}
-            className="flex-1 py-3 px-4 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
+            className="btn btn-success w-full py-3.5 text-base"
           >
-            Reveal Votes
+            <span className="flex items-center justify-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              Reveal Votes
+            </span>
           </button>
         </div>
 
@@ -832,17 +892,22 @@ export default function SessionPage() {
             : resultType === 'joint' ? 'Joint Majority result'
             : 'Result';
           return (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">
-                  {story ? `${titlePrefix} for ${story}` : titlePrefix}
-                </h2>
+          <div className="fixed inset-0 bg-[#1a1f36]/60 backdrop-blur-sm flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 border border-[#e3e8ee]" style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
+              <div className="flex justify-between items-start mb-5">
+                <div>
+                  <h2 className="text-lg font-semibold text-[#1a1f36]">
+                    {titlePrefix}
+                  </h2>
+                  {story && (
+                    <p className="text-sm text-[#697386] mt-0.5">{story}</p>
+                  )}
+                </div>
                 <button
                   onClick={resetVotes}
-                  className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                  className="p-1.5 rounded-md text-[#8792a2] hover:text-[#3c4257] hover:bg-[#f6f9fc] transition-colors"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -862,9 +927,14 @@ export default function SessionPage() {
                     resetVotes();
                   }
                 }}
-                className="w-full mt-6 py-3 px-4 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg transition-colors"
+                className="btn btn-warning w-full mt-6 py-3"
               >
-                New Round
+                <span className="flex items-center justify-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  New Round
+                </span>
               </button>
             </div>
           </div>
@@ -932,7 +1002,7 @@ function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCust
     .filter((v): v is string => v !== null);
 
   if (allVotes.length === 0) {
-    return <p className="text-gray-600 dark:text-gray-400">No votes cast</p>;
+    return <p className="text-[#8792a2]">No votes cast</p>;
   }
 
   const numericVotes = allVotes
@@ -967,66 +1037,68 @@ function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCust
     <div className="space-y-4">
       {/* Only show Average/Min/Max for numeric scales */}
       {hasNumericVotes && (
-        <div className="grid grid-cols-3 gap-4 text-center">
-          <div>
-            <div className="text-2xl font-bold">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-[#f6f9fc] rounded-md p-3 text-center border border-[#e3e8ee]">
+            <div className="text-2xl font-semibold text-[#1a1f36]">
               {average.toFixed(1)}
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">Average</div>
+            <div className="text-xs text-[#697386] mt-0.5">Average</div>
           </div>
-          <div>
-            <div className="text-2xl font-bold">
+          <div className="bg-[#f6f9fc] rounded-md p-3 text-center border border-[#e3e8ee]">
+            <div className="text-2xl font-semibold text-[#1a1f36]">
               {min}
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">Min</div>
+            <div className="text-xs text-[#697386] mt-0.5">Min</div>
           </div>
-          <div>
-            <div className="text-2xl font-bold">
+          <div className="bg-[#f6f9fc] rounded-md p-3 text-center border border-[#e3e8ee]">
+            <div className="text-2xl font-semibold text-[#1a1f36]">
               {max}
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400">Max</div>
+            <div className="text-xs text-[#697386] mt-0.5">Max</div>
           </div>
         </div>
       )}
       {hasConsensus ? (
-        <div className={`text-center ${hasNumericVotes ? 'pt-2 border-t border-green-200 dark:border-green-800' : ''}`}>
+        <div className={`text-center ${hasNumericVotes ? 'pt-4 border-t border-[#e3e8ee]' : ''}`}>
           <div
-            className={`text-2xl font-bold text-green-600 dark:text-green-400 ${canSelect ? 'cursor-pointer bg-green-50 dark:bg-green-900/30 border border-green-300 dark:border-green-700 hover:bg-green-100 dark:hover:bg-green-900 rounded-lg px-4 py-2 transition-colors inline-block' : ''}`}
+            className={`text-2xl font-semibold text-[#30c48d] ${canSelect ? 'cursor-pointer bg-[#ecfdf5] border border-[#30c48d]/30 hover:bg-[#d1fae5] rounded-md px-5 py-3 transition-all inline-block' : ''}`}
+            style={canSelect ? { boxShadow: '0 2px 4px rgba(48, 196, 141, 0.15)' } : {}}
             onClick={() => canSelect && onSelectVote?.((customVote || majorityVotes[0]))}
           >
             Consensus! {majorityVotes[0]}
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          <div className="text-sm text-[#697386] mt-2">
             {canSelect ? 'Click to save to history' : `Everyone voted ${majorityVotes[0]}`}
           </div>
           {canSelect && (
-            <div className="mt-3">
+            <div className="mt-4">
               <input
                 type="text"
                 maxLength={3}
                 value={customVote || ''}
                 onChange={(e) => onCustomVoteChange?.(e.target.value)}
                 placeholder="?"
-                className="w-16 h-11 text-2xl font-bold text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-16 h-12 text-2xl font-semibold text-center border border-[#e3e8ee] rounded-md bg-white text-[#1a1f36] focus:outline-none focus:ring-2 focus:ring-[#635bff]/20 focus:border-[#635bff]"
               />
-              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Or input value to save history</div>
+              <div className="text-xs text-[#8792a2] mt-1.5">Or input custom value</div>
             </div>
           )}
         </div>
       ) : majorityVotes.length > 0 && (
-        <div className={`text-center ${hasNumericVotes ? 'pt-2 border-t border-green-200 dark:border-green-800' : ''}`}>
+        <div className={`text-center ${hasNumericVotes ? 'pt-4 border-t border-[#e3e8ee]' : ''}`}>
           <div className="flex justify-center items-center gap-3">
             {majorityVotes.map((vote) => (
               <span
                 key={vote}
-                className={`text-2xl font-bold ${canSelect ? 'cursor-pointer bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900 rounded-lg px-4 py-2 transition-colors' : ''}`}
+                className={`text-2xl font-semibold text-[#1a1f36] ${canSelect ? 'cursor-pointer bg-[#f5f8ff] border border-[#635bff]/30 hover:bg-[#e0e7ff] rounded-md px-5 py-3 transition-all' : ''}`}
+                style={canSelect ? { boxShadow: '0 2px 4px rgba(99, 91, 255, 0.15)' } : {}}
                 onClick={() => canSelect && onSelectVote?.((customVote || vote))}
               >
                 {vote}
               </span>
             ))}
           </div>
-          <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+          <div className="text-sm text-[#697386] mt-2">
             {canSelect ? 'Click a value to save to history' : (
               <>
                 {majorityVotes.length === 1 ? 'Majority Vote' : 'Joint Majority'}
@@ -1035,16 +1107,16 @@ function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCust
             )}
           </div>
           {canSelect && (
-            <div className="mt-3">
+            <div className="mt-4">
               <input
                 type="text"
                 maxLength={3}
                 value={customVote || ''}
                 onChange={(e) => onCustomVoteChange?.(e.target.value)}
                 placeholder="?"
-                className="w-16 h-11 text-2xl font-bold text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-16 h-12 text-2xl font-semibold text-center border border-[#e3e8ee] rounded-md bg-white text-[#1a1f36] focus:outline-none focus:ring-2 focus:ring-[#635bff]/20 focus:border-[#635bff]"
               />
-              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Or input value to save history</div>
+              <div className="text-xs text-[#8792a2] mt-1.5">Or input custom value</div>
             </div>
           )}
         </div>
