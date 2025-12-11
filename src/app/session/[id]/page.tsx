@@ -756,48 +756,6 @@ export default function SessionPage() {
       <div className="flex gap-5 max-w-6xl mx-auto p-5">
         {/* Left Sidebar */}
         <div className="w-64 flex-shrink-0 space-y-4">
-          {/* Results Panel */}
-          {(() => {
-            const isRevealed = session?.revealed ?? false;
-            const resultType = session ? getResultType(session.participants) : 'none';
-            const titlePrefix = isRevealed
-              ? (resultType === 'consensus' ? 'Consensus'
-                : resultType === 'majority' ? 'Majority'
-                : resultType === 'joint' ? 'Joint Majority'
-                : 'Result')
-              : 'Results';
-            return (
-              <div
-                className={`bg-white rounded-lg border p-4 transition-all ${
-                  isRevealed ? 'border-[#e3e8ee]' : 'border-[#e3e8ee] opacity-60'
-                }`}
-                style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h2 className="section-label">{titlePrefix}</h2>
-                    {story && (
-                      <p className="text-xs text-[#697386] mt-0.5 truncate">{story}</p>
-                    )}
-                  </div>
-                </div>
-                {isRevealed && session ? (
-                  <VoteSummary
-                    participants={session.participants}
-                    onSelectVote={saveToHistory}
-                    canSelect={!!story.trim()}
-                    customVote={customVote}
-                    onCustomVoteChange={setCustomVote}
-                  />
-                ) : (
-                  <div className="text-center py-6">
-                    <p className="text-sm text-[#8792a2]">Reveal votes to see results</p>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
           {/* History */}
           <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <h2 className="section-label mb-3">History</h2>
@@ -958,8 +916,37 @@ export default function SessionPage() {
           )}
         </div>
 
-        {/* Card Selection - Only show for voters */}
-        {myRole === 'voter' && (
+        {/* Card Selection / Results - Show results when revealed, voting cards otherwise */}
+        {session?.revealed ? (
+          // Results Panel (replaces voting cards when revealed)
+          (() => {
+            const resultType = session ? getResultType(session.participants) : 'none';
+            const titlePrefix = resultType === 'consensus' ? 'Consensus'
+              : resultType === 'majority' ? 'Majority'
+              : resultType === 'joint' ? 'Joint Majority'
+              : 'Result';
+            return (
+              <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
+                <div className="flex justify-between items-start mb-3">
+                  <div>
+                    <h2 className="section-label">{titlePrefix}</h2>
+                    {story && (
+                      <p className="text-xs text-[#697386] mt-0.5 truncate">{story}</p>
+                    )}
+                  </div>
+                </div>
+                <VoteSummary
+                  participants={session.participants}
+                  onSelectVote={saveToHistory}
+                  canSelect={!!story.trim()}
+                  customVote={customVote}
+                  onCustomVoteChange={setCustomVote}
+                />
+              </div>
+            );
+          })()
+        ) : myRole === 'voter' ? (
+          // Voting cards for voters
           <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <div className="flex items-center gap-2 mb-3">
               <h2 className="section-label">Your Vote</h2>
@@ -1018,10 +1005,10 @@ export default function SessionPage() {
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
-        {/* Observer notice */}
-        {myRole === 'observer' && (
+        {/* Observer notice - only show when not revealed */}
+        {myRole === 'observer' && !session?.revealed && (
           <div className="bg-[#f5f8ff] rounded-lg p-4 border border-[#e0e7ff]">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-md bg-[#635bff] flex items-center justify-center">
