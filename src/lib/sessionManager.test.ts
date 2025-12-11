@@ -41,12 +41,12 @@ describeWithRedis('SessionManager with Redis', () => {
   });
 
   describe('addParticipant', () => {
-    it('should add an estimator participant by default', async () => {
+    it('should add a voter participant by default', async () => {
       const participant = await addParticipant(testSessionId, 'user-1', 'Alice');
 
       expect(participant?.id).toBe('user-1');
       expect(participant?.name).toBe('Alice');
-      expect(participant?.role).toBe('estimator');
+      expect(participant?.role).toBe('voter');
       expect(participant?.vote).toBeNull();
     });
 
@@ -58,7 +58,7 @@ describeWithRedis('SessionManager with Redis', () => {
   });
 
   describe('vote', () => {
-    it('should allow estimator to vote', async () => {
+    it('should allow voter to vote', async () => {
       const result = await vote(testSessionId, 'user-1', '5');
 
       expect(result).toBe(true);
@@ -98,7 +98,7 @@ describeWithRedis('SessionManager with Redis', () => {
   });
 
   describe('reset', () => {
-    it('should reset revealed to false and clear estimator votes', async () => {
+    it('should reset revealed to false and clear voter votes', async () => {
       const result = await reset(testSessionId);
 
       expect(result).toBe(true);
