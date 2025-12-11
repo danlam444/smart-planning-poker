@@ -1,4 +1,4 @@
-export type ParticipantRole = 'estimator' | 'observer';
+export type ParticipantRole = 'voter' | 'observer';
 
 export interface Participant {
   id: string;

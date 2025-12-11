@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Planning Poker Session', () => {
-  test('user can create session and join as estimator, then see themselves in participants', async ({ page }) => {
+  test('user can create session and join as voter, then see themselves in participants', async ({ page }) => {
     // Create a new session
     await page.goto('/');
     await page.fill('#sessionName', 'Test Sprint');
@@ -10,7 +10,7 @@ test.describe('Planning Poker Session', () => {
     // Wait for redirect to session page
     await expect(page).toHaveURL(/\/session\/[a-f0-9-]+/);
 
-    // Join as estimator (default)
+    // Join as voter (default)
     await page.fill('#name', 'Alice');
     await page.click('button[type="submit"]');
 
@@ -55,14 +55,14 @@ test.describe('Planning Poker Session', () => {
     await expect(page.getByText("You're observing this session")).toBeVisible();
   });
 
-  test('estimator can see voting cards', async ({ page }) => {
+  test('voter can see voting cards', async ({ page }) => {
     // Create a new session
     await page.goto('/');
     await page.fill('#sessionName', 'Test Sprint');
     await page.click('button[type="submit"]');
 
-    // Join as estimator
-    await page.fill('#name', 'Estimator');
+    // Join as voter
+    await page.fill('#name', 'Voter');
     await page.click('button[type="submit"]');
 
     // Verify voting cards ARE visible
@@ -71,7 +71,7 @@ test.describe('Planning Poker Session', () => {
     await expect(page.getByRole('button', { name: '5' })).toBeVisible();
   });
 
-  test('multi-user session: 2 estimators vote, observer reveals, all see results', async ({ browser }) => {
+  test('multi-user session: 2 voters vote, observer reveals, all see results', async ({ browser }) => {
     // Create a new session and get the URL
     const context1 = await browser.newContext();
     const estimator1 = await context1.newPage();
@@ -82,19 +82,19 @@ test.describe('Planning Poker Session', () => {
     await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
     const sessionUrl = estimator1.url();
 
-    // Estimator 1 joins
-    await estimator1.fill('#name', 'Estimator1');
+    // Voter 1 joins
+    await estimator1.fill('#name', 'Voter1');
     await estimator1.click('button[type="submit"]');
     await expect(estimator1.getByText('Participants')).toBeVisible();
 
-    // Estimator 2 joins the same session
+    // Voter 2 joins the same session
     const context2 = await browser.newContext();
     const estimator2 = await context2.newPage();
     await estimator2.goto(sessionUrl);
-    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.fill('#name', 'Voter2');
     await estimator2.click('button[type="submit"]');
-    await expect(estimator2.getByText('Estimator1')).toBeVisible();
-    await expect(estimator2.getByText('Estimator2')).toBeVisible();
+    await expect(estimator2.getByText('Voter1')).toBeVisible();
+    await expect(estimator2.getByText('Voter2')).toBeVisible();
 
     // Observer 1 joins the same session
     const context3 = await browser.newContext();
@@ -115,13 +115,13 @@ test.describe('Planning Poker Session', () => {
 
     // Verify all participants see each other
     for (const page of [estimator1, estimator2, observer1, observer2]) {
-      await expect(page.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
-      await expect(page.getByText('Estimator2')).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+      await expect(page.getByText('Voter2')).toBeVisible({ timeout: 10000 });
       await expect(page.getByText('Observer1')).toBeVisible({ timeout: 10000 });
       await expect(page.getByText('Observer2')).toBeVisible({ timeout: 10000 });
     }
 
-    // Estimators place their votes
+    // Voters place their votes
     await estimator1.getByRole('button', { name: '5' }).click();
     await estimator2.getByRole('button', { name: '8' }).click();
 
@@ -152,13 +152,13 @@ test.describe('Planning Poker Session', () => {
     await context4.close();
   });
 
-  test('estimator can toggle vote on and off', async ({ page }) => {
+  test('voter can toggle vote on and off', async ({ page }) => {
     // Create a new session
     await page.goto('/');
     await page.fill('#sessionName', 'Toggle Vote Sprint');
     await page.click('button[type="submit"]');
 
-    // Join as estimator
+    // Join as voter
     await page.fill('#name', 'Toggler');
     await page.click('button[type="submit"]');
     await expect(page.getByText('Participants')).toBeVisible({ timeout: 10000 });
@@ -198,20 +198,20 @@ test.describe('Planning Poker Session', () => {
     await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
     const sessionUrl = estimator1.url();
 
-    // Estimator 1 joins
-    await estimator1.fill('#name', 'Estimator1');
+    // Voter 1 joins
+    await estimator1.fill('#name', 'Voter1');
     await estimator1.click('button[type="submit"]');
     await expect(estimator1.getByText('Participants')).toBeVisible();
 
-    // Estimator 2 joins
+    // Voter 2 joins
     const context2 = await browser.newContext();
     const estimator2 = await context2.newPage();
     await estimator2.goto(sessionUrl);
-    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.fill('#name', 'Voter2');
     await estimator2.click('button[type="submit"]');
-    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+    await expect(estimator2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
 
-    // Both estimators vote
+    // Both voters vote
     await estimator1.getByRole('button', { name: '5' }).click();
     await estimator2.getByRole('button', { name: '8' }).click();
 
@@ -223,7 +223,7 @@ test.describe('Planning Poker Session', () => {
     await expect(estimator1.getByRole('button', { name: '5' })).toHaveClass(/bg-\[#635bff\]/, { timeout: 10000 });
     await expect(estimator2.getByRole('button', { name: '8' })).toHaveClass(/bg-\[#635bff\]/, { timeout: 10000 });
 
-    // Estimator 1 reveals votes to open the modal, then clicks "New Round" in the modal
+    // Voter 1 reveals votes to open the modal, then clicks "New Round" in the modal
     await estimator1.getByRole('button', { name: 'Reveal Votes' }).click();
     await expect(estimator1.getByText('Average')).toBeVisible({ timeout: 10000 });
     await estimator1.getByRole('button', { name: 'New Round' }).click();
@@ -231,7 +231,7 @@ test.describe('Planning Poker Session', () => {
     // Wait for modal to close
     await expect(estimator1.getByText('Average')).not.toBeVisible({ timeout: 10000 });
 
-    // Both estimators should have their vote selections cleared
+    // Both voters should have their vote selections cleared
     // Vote buttons should no longer be highlighted for either user
     await expect(estimator1.getByRole('button', { name: '5' })).not.toHaveClass(/bg-\[#635bff\]/);
     await expect(estimator2.getByRole('button', { name: '8' })).not.toHaveClass(/bg-\[#635bff\]/);
@@ -252,23 +252,23 @@ test.describe('Planning Poker Session', () => {
     await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
     const sessionUrl = estimator1.url();
 
-    // Estimator 1 joins
-    await estimator1.fill('#name', 'Estimator1');
+    // Voter 1 joins
+    await estimator1.fill('#name', 'Voter1');
     await estimator1.click('button[type="submit"]');
     await expect(estimator1.getByText('Participants')).toBeVisible();
 
-    // Estimator 2 joins
+    // Voter 2 joins
     const context2 = await browser.newContext();
     const estimator2 = await context2.newPage();
     await estimator2.goto(sessionUrl);
-    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.fill('#name', 'Voter2');
     await estimator2.click('button[type="submit"]');
-    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+    await expect(estimator2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
 
     // Enter a story name
     await estimator1.fill('input[placeholder="Enter story title or ticket number..."]', 'User Login Feature');
 
-    // Both estimators vote the same value (consensus)
+    // Both voters vote the same value (consensus)
     await estimator1.getByRole('button', { name: '5' }).click();
     await estimator2.getByRole('button', { name: '5' }).click();
 
@@ -298,23 +298,23 @@ test.describe('Planning Poker Session', () => {
     await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
     const sessionUrl = estimator1.url();
 
-    // Estimator 1 joins
-    await estimator1.fill('#name', 'Estimator1');
+    // Voter 1 joins
+    await estimator1.fill('#name', 'Voter1');
     await estimator1.click('button[type="submit"]');
     await expect(estimator1.getByText('Participants')).toBeVisible();
 
-    // Estimator 2 joins
+    // Voter 2 joins
     const context2 = await browser.newContext();
     const estimator2 = await context2.newPage();
     await estimator2.goto(sessionUrl);
-    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.fill('#name', 'Voter2');
     await estimator2.click('button[type="submit"]');
-    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+    await expect(estimator2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
 
     // Enter a story name
     await estimator1.fill('input[placeholder="Enter story title or ticket number..."]', 'Payment Integration');
 
-    // Estimators vote different values (no consensus, creates majority)
+    // Voters vote different values (no consensus, creates majority)
     await estimator1.getByRole('button', { name: '5' }).click();
     await estimator2.getByRole('button', { name: '8' }).click();
 
@@ -335,14 +335,14 @@ test.describe('Planning Poker Session', () => {
     await context2.close();
   });
 
-  test('estimator can switch voting scales using arrow buttons', async ({ page }) => {
+  test('voter can switch voting scales using arrow buttons', async ({ page }) => {
     // Create a new session
     await page.goto('/');
     await page.fill('#sessionName', 'Scale Switch Test');
     await page.click('button[type="submit"]');
 
-    // Join as estimator
-    await page.fill('#name', 'Estimator');
+    // Join as voter
+    await page.fill('#name', 'Voter');
     await page.click('button[type="submit"]');
     await expect(page.getByText('Participants')).toBeVisible();
 
@@ -378,8 +378,8 @@ test.describe('Planning Poker Session', () => {
     await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
     const sessionUrl = estimator1.url();
 
-    // Estimator 1 joins
-    await estimator1.fill('#name', 'Estimator1');
+    // Voter 1 joins
+    await estimator1.fill('#name', 'Voter1');
     await estimator1.click('button[type="submit"]');
     await expect(estimator1.getByText('Participants')).toBeVisible();
 
@@ -387,15 +387,15 @@ test.describe('Planning Poker Session', () => {
     await estimator1.locator('button[title="Next scale"]').click();
     await expect(estimator1.getByText('T-Shirt Sizes')).toBeVisible();
 
-    // Estimator 2 joins
+    // Voter 2 joins
     const context2 = await browser.newContext();
     const estimator2 = await context2.newPage();
     await estimator2.goto(sessionUrl);
-    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.fill('#name', 'Voter2');
     await estimator2.click('button[type="submit"]');
-    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+    await expect(estimator2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
 
-    // Estimator 2 also switches to T-Shirt sizes
+    // Voter 2 also switches to T-Shirt sizes
     await estimator2.locator('button[title="Next scale"]').click();
 
     // Both vote for 'L'
@@ -427,20 +427,20 @@ test.describe('Planning Poker Session', () => {
     await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
     const sessionUrl = estimator1.url();
 
-    // Estimator 1 joins
-    await estimator1.fill('#name', 'Estimator1');
+    // Voter 1 joins
+    await estimator1.fill('#name', 'Voter1');
     await estimator1.click('button[type="submit"]');
     await expect(estimator1.getByText('Participants')).toBeVisible();
 
-    // Estimator 2 joins
+    // Voter 2 joins
     const context2 = await browser.newContext();
     const estimator2 = await context2.newPage();
     await estimator2.goto(sessionUrl);
-    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.fill('#name', 'Voter2');
     await estimator2.click('button[type="submit"]');
-    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+    await expect(estimator2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
 
-    // Estimator 1 enters a story name and presses Enter to lock it
+    // Voter 1 enters a story name and presses Enter to lock it
     const storyInput = estimator1.locator('input[placeholder="Enter story title or ticket number..."]');
     await storyInput.fill('Shared Story Name');
     await storyInput.press('Enter');
@@ -448,7 +448,7 @@ test.describe('Planning Poker Session', () => {
     // Wait for the field to become locked (displays as span instead of input)
     await expect(estimator1.locator('span').filter({ hasText: 'Shared Story Name' })).toBeVisible();
 
-    // Estimator 2 should see the same story name
+    // Voter 2 should see the same story name
     await expect(estimator2.locator('span').filter({ hasText: 'Shared Story Name' })).toBeVisible({ timeout: 10000 });
 
     // Cleanup
@@ -467,20 +467,20 @@ test.describe('Planning Poker Session', () => {
     await expect(estimator1).toHaveURL(/\/session\/[a-f0-9-]+/);
     const sessionUrl = estimator1.url();
 
-    // Estimator 1 joins
-    await estimator1.fill('#name', 'Estimator1');
+    // Voter 1 joins
+    await estimator1.fill('#name', 'Voter1');
     await estimator1.click('button[type="submit"]');
     await expect(estimator1.getByText('Participants')).toBeVisible();
 
-    // Estimator 2 joins
+    // Voter 2 joins
     const context2 = await browser.newContext();
     const estimator2 = await context2.newPage();
     await estimator2.goto(sessionUrl);
-    await estimator2.fill('#name', 'Estimator2');
+    await estimator2.fill('#name', 'Voter2');
     await estimator2.click('button[type="submit"]');
-    await expect(estimator2.getByText('Estimator1')).toBeVisible({ timeout: 10000 });
+    await expect(estimator2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
 
-    // Estimator 1 enters and locks a story name
+    // Voter 1 enters and locks a story name
     const storyInput = estimator1.locator('input[placeholder="Enter story title or ticket number..."]');
     await storyInput.fill('Story To Be Cleared');
     await storyInput.press('Enter');
@@ -516,7 +516,7 @@ test.describe('Planning Poker Session', () => {
   });
 
   test('participant can close browser and rejoin with same profile', async ({ browser }) => {
-    // Create a session and join as estimator
+    // Create a session and join as voter
     const context1 = await browser.newContext();
     const page1 = await context1.newPage();
 
@@ -526,7 +526,7 @@ test.describe('Planning Poker Session', () => {
     await expect(page1).toHaveURL(/\/session\/[a-f0-9-]+/);
     const sessionUrl = page1.url();
 
-    // Join as estimator
+    // Join as voter
     await page1.fill('#name', 'RejoiningUser');
     await page1.click('button[type="submit"]');
     await expect(page1.getByText('Participants')).toBeVisible();

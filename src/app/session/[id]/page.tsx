@@ -114,13 +114,16 @@ function SheepIcon({ className, variant = 'dark' }: { className?: string; varian
 function ParticipantCard({
   participant,
   isMe,
-  revealed
+  revealed,
+  onAvatarClick
 }: {
   participant: Participant;
   isMe: boolean;
   revealed: boolean;
+  onAvatarClick?: () => void;
 }) {
   const hasVoted = participant.vote !== null;
+  const avatarSrc = `/avatars/${participant.avatar || 'chicken'}.png`;
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -131,21 +134,33 @@ function ParticipantCard({
           hasVoted
             ? 'bg-[#635bff]'
             : 'bg-white border border-[#e3e8ee]'
-        }`}
+        } ${isMe ? 'cursor-pointer' : ''}`}
         style={{ boxShadow: hasVoted ? '0 4px 12px rgba(99, 91, 255, 0.3)' : '0 2px 4px rgba(0,0,0,0.04)' }}
+        onClick={isMe ? onAvatarClick : undefined}
+        title={isMe ? 'Click to change avatar' : undefined}
       >
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           {revealed && hasVoted ? (
             <span className="text-2xl font-semibold text-white">{participant.vote}</span>
           ) : hasVoted ? (
-            <>
-              <svg className="w-8 h-8 text-white/90" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </>
+            <img
+              src={avatarSrc}
+              alt={participant.avatar}
+              className="w-12 h-12 object-contain opacity-90"
+            />
           ) : (
-            <span className="text-2xl text-[#8792a2]">?</span>
+            <img
+              src={avatarSrc}
+              alt={participant.avatar}
+              className="w-12 h-12 object-contain"
+            />
           )}
+        </div>
+        {/* Voter clipboard icon */}
+        <div className={`absolute bottom-1 right-1 w-5 h-5 rounded-full flex items-center justify-center ${hasVoted ? 'bg-white/30' : 'bg-[#635bff]'}`}>
+          <svg xmlns="http://www.w3.org/2000/svg" className={`w-3 h-3 ${hasVoted ? 'text-white' : 'text-white'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+          </svg>
         </div>
       </div>
       <span className={`text-xs font-medium truncate max-w-16 ${
@@ -157,13 +172,40 @@ function ParticipantCard({
   );
 }
 
-type ParticipantRole = 'estimator' | 'observer';
+type ParticipantRole = 'voter' | 'observer';
+
+// Avatar list in alphabetical order
+const AVATARS = [
+  'chicken',
+  'cow',
+  'dog',
+  'dragon',
+  'pig',
+  'rabbit',
+  'rat',
+  'sheep',
+  'snake',
+  'tiger',
+] as const;
+
+type AvatarType = typeof AVATARS[number];
+
+function getRandomAvatar(): AvatarType {
+  return AVATARS[Math.floor(Math.random() * AVATARS.length)];
+}
+
+function getNextAvatar(current: string): AvatarType {
+  const currentIndex = AVATARS.indexOf(current as AvatarType);
+  if (currentIndex === -1) return AVATARS[0];
+  return AVATARS[(currentIndex + 1) % AVATARS.length];
+}
 
 interface Participant {
   id: string;
   name: string;
   role: ParticipantRole;
   vote: string | null;
+  avatar: string;
 }
 
 interface SessionState {
@@ -179,6 +221,7 @@ interface StoredParticipant {
   name: string;
   role: ParticipantRole;
   participantId: string;
+  avatar: string;
 }
 
 interface HistoryEntry {
@@ -213,10 +256,10 @@ export default function SessionPage() {
 
   const [session, setSession] = useState<SessionState | null>(null);
   const [participantName, setParticipantName] = useState('');
-  const [selectedRole, setSelectedRole] = useState<ParticipantRole>('estimator');
+  const [selectedRole, setSelectedRole] = useState<ParticipantRole>('voter');
   const [joined, setJoined] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
-  const [myRole, setMyRole] = useState<ParticipantRole>('estimator');
+  const [myRole, setMyRole] = useState<ParticipantRole>('voter');
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState(false);
@@ -226,11 +269,13 @@ export default function SessionPage() {
   const [customVote, setCustomVote] = useState('');
   const [votingScale, setVotingScale] = useState<VotingScale>('fibonacci');
   const [linkCopied, setLinkCopied] = useState(false);
+  const [myAvatar, setMyAvatar] = useState<string>('');
   const channelRef = useRef<Channel | null>(null);
   const hasAttemptedRejoin = useRef(false);
   const myIdRef = useRef<string | null>(null);
   const bellAudioRef = useRef<HTMLAudioElement | null>(null);
   const participantNameRef = useRef<string | null>(null);
+  const myAvatarRef = useRef<string>('');
   const storyRef = useRef<string>('');
   const lastAutoSavedStoryRef = useRef<string>('');
 
@@ -332,6 +377,8 @@ export default function SessionPage() {
       hasAttemptedRejoin.current = true;
       const stored = getStoredParticipant(sessionId);
       if (stored) {
+        // Use stored avatar or generate a random one if not present
+        const avatar = stored.avatar || getRandomAvatar();
         fetch(`/api/sessions/${sessionId}/join`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -339,6 +386,7 @@ export default function SessionPage() {
             participantId: stored.participantId,
             name: stored.name,
             role: stored.role,
+            avatar,
           }),
         })
           .then(res => res.json())
@@ -349,10 +397,14 @@ export default function SessionPage() {
             participantNameRef.current = stored.name;
             setMyRole(stored.role);
             setJoined(true);
-            // Restore vote highlight
+            // Restore vote highlight and avatar
             const me = state.participants.find(p => p.id === stored.participantId);
-            if (me && me.vote) {
-              setSelectedCard(me.vote);
+            if (me) {
+              if (me.vote) {
+                setSelectedCard(me.vote);
+              }
+              setMyAvatar(me.avatar || avatar);
+              myAvatarRef.current = me.avatar || avatar;
             }
           })
           .catch(err => {
@@ -372,6 +424,7 @@ export default function SessionPage() {
     if (!participantName.trim()) return;
 
     const participantId = crypto.randomUUID();
+    const avatar = getRandomAvatar();
 
     try {
       const res = await fetch(`/api/sessions/${sessionId}/join`, {
@@ -381,6 +434,7 @@ export default function SessionPage() {
           participantId,
           name: participantName.trim(),
           role: selectedRole,
+          avatar,
         }),
       });
 
@@ -393,11 +447,14 @@ export default function SessionPage() {
         name: participantName.trim(),
         role: selectedRole,
         participantId,
+        avatar,
       });
 
       setMyId(participantId);
       myIdRef.current = participantId;
       participantNameRef.current = participantName.trim();
+      setMyAvatar(avatar);
+      myAvatarRef.current = avatar;
       setMyRole(selectedRole);
       setJoined(true);
     } catch (err) {
@@ -501,10 +558,37 @@ export default function SessionPage() {
     setMyId(null);
     myIdRef.current = null;
     participantNameRef.current = null;
-    setMyRole('estimator');
+    setMyRole('voter');
     setSelectedCard(null);
     setParticipantName('');
+    setMyAvatar('');
+    myAvatarRef.current = '';
   }, [sessionId]);
+
+  const cycleAvatar = useCallback(async () => {
+    if (!myId || !myAvatar) return;
+
+    const newAvatar = getNextAvatar(myAvatar);
+    setMyAvatar(newAvatar);
+    myAvatarRef.current = newAvatar;
+
+    // Update localStorage
+    const stored = getStoredParticipant(sessionId);
+    if (stored) {
+      storeParticipant(sessionId, { ...stored, avatar: newAvatar });
+    }
+
+    // Update on server
+    try {
+      await fetch(`/api/sessions/${sessionId}/avatar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId: myId, avatar: newAvatar }),
+      });
+    } catch (err) {
+      console.error('Failed to update avatar:', err);
+    }
+  }, [sessionId, myId, myAvatar]);
 
   const saveToHistory = useCallback((vote: string) => {
     if (!story.trim()) return;
@@ -589,7 +673,7 @@ export default function SessionPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <label
                     className={`relative flex flex-col items-center p-3 rounded-md cursor-pointer transition-all border ${
-                      selectedRole === 'estimator'
+                      selectedRole === 'voter'
                         ? 'border-[#635bff] bg-[#f5f8ff]'
                         : 'border-[#e3e8ee] hover:border-[#c1c9d2]'
                     }`}
@@ -597,13 +681,13 @@ export default function SessionPage() {
                     <input
                       type="radio"
                       name="role"
-                      value="estimator"
-                      checked={selectedRole === 'estimator'}
-                      onChange={() => setSelectedRole('estimator')}
+                      value="voter"
+                      checked={selectedRole === 'voter'}
+                      onChange={() => setSelectedRole('voter')}
                       className="sr-only"
                     />
                     <div className={`w-8 h-8 rounded-md flex items-center justify-center mb-1.5 ${
-                      selectedRole === 'estimator'
+                      selectedRole === 'voter'
                         ? 'bg-[#635bff] text-white'
                         : 'bg-[#f6f9fc] text-[#8792a2]'
                     }`}>
@@ -612,8 +696,8 @@ export default function SessionPage() {
                       </svg>
                     </div>
                     <span className={`text-sm font-medium ${
-                      selectedRole === 'estimator' ? 'text-[#635bff]' : 'text-[#3c4257]'
-                    }`}>Estimator</span>
+                      selectedRole === 'voter' ? 'text-[#635bff]' : 'text-[#3c4257]'
+                    }`}>Voter</span>
                     <span className="text-xs text-[#8792a2]">Can vote</span>
                   </label>
 
@@ -785,13 +869,14 @@ export default function SessionPage() {
         <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
           <h3 className="section-label mb-3">Participants</h3>
           <div className="flex flex-wrap gap-3">
-            {/* Estimators */}
-            {session?.participants.filter((p) => p.role === 'estimator').map((p: Participant) => (
+            {/* Voters */}
+            {session?.participants.filter((p) => p.role === 'voter').map((p: Participant) => (
               <ParticipantCard
                 key={p.id}
                 participant={p}
                 isMe={p.id === myId}
                 revealed={session?.revealed ?? false}
+                onAvatarClick={p.id === myId ? cycleAvatar : undefined}
               />
             ))}
             {/* Observers */}
@@ -799,12 +884,22 @@ export default function SessionPage() {
               <div key={p.id} className="flex flex-col items-center gap-2">
                 <div
                   className={`relative w-16 h-24 rounded-lg bg-[#f6f9fc] border border-[#e3e8ee] ${
-                    p.id === myId ? 'ring-2 ring-[#635bff] ring-offset-2' : ''
+                    p.id === myId ? 'ring-2 ring-[#635bff] ring-offset-2 cursor-pointer' : ''
                   }`}
                   style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
+                  onClick={p.id === myId ? cycleAvatar : undefined}
+                  title={p.id === myId ? 'Click to change avatar' : undefined}
                 >
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <svg className="w-6 h-6 text-[#8792a2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <img
+                      src={`/avatars/${p.avatar || 'chicken'}.png`}
+                      alt={p.avatar || 'chicken'}
+                      className="w-12 h-12 object-contain"
+                    />
+                  </div>
+                  {/* Observer eye icon */}
+                  <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-[#635bff] flex items-center justify-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                     </svg>
@@ -863,8 +958,8 @@ export default function SessionPage() {
           )}
         </div>
 
-        {/* Card Selection - Only show for estimators */}
-        {myRole === 'estimator' && (
+        {/* Card Selection - Only show for voters */}
+        {myRole === 'voter' && (
           <div className="bg-white rounded-lg border border-[#e3e8ee] p-4" style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}>
             <div className="flex items-center gap-2 mb-3">
               <h2 className="section-label">Your Vote</h2>
@@ -970,7 +1065,7 @@ export default function SessionPage() {
           ) : (
             <button
               onClick={revealVotes}
-              disabled={!session?.participants.some(p => p.role === 'estimator' && p.vote !== null)}
+              disabled={!session?.participants.some(p => p.role === 'voter' && p.vote !== null)}
               className="btn btn-success w-full py-3.5 text-base"
             >
               <span className="flex items-center justify-center gap-2">
@@ -1021,7 +1116,7 @@ export default function SessionPage() {
 
 function getConsensusVote(participants: Participant[]): string | null {
   const allVotes = participants
-    .filter((p) => p.role === 'estimator')
+    .filter((p) => p.role === 'voter')
     .map((p) => p.vote)
     .filter((v): v is string => v !== null);
 
@@ -1037,7 +1132,7 @@ function getConsensusVote(participants: Participant[]): string | null {
 
 function getResultType(participants: Participant[]): 'consensus' | 'majority' | 'joint' | 'none' {
   const allVotes = participants
-    .filter((p) => p.role === 'estimator')
+    .filter((p) => p.role === 'voter')
     .map((p) => p.vote)
     .filter((v): v is string => v !== null);
 
@@ -1068,9 +1163,9 @@ function getResultType(participants: Participant[]): 'consensus' | 'majority' | 
 }
 
 function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCustomVoteChange }: { participants: Participant[]; onSelectVote?: (vote: string) => void; canSelect?: boolean; customVote?: string; onCustomVoteChange?: (value: string) => void }) {
-  // Only count votes from estimators
+  // Only count votes from voters
   const allVotes = participants
-    .filter((p) => p.role === 'estimator')
+    .filter((p) => p.role === 'voter')
     .map((p) => p.vote)
     .filter((v): v is string => v !== null);
 

@@ -7,8 +7,9 @@ const SESSION_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
 export interface Participant {
   id: string;
   name: string;
-  role: 'estimator' | 'observer';
+  role: 'voter' | 'observer';
   vote: string | null;
+  avatar: string;
 }
 
 export interface Session {
@@ -92,7 +93,8 @@ export async function addParticipant(
   sessionId: string,
   participantId: string,
   name: string,
-  role: 'estimator' | 'observer' = 'estimator'
+  role: 'voter' | 'observer' = 'voter',
+  avatar: string = 'chicken'
 ): Promise<Participant | null> {
   let session = await getSession(sessionId);
 
@@ -104,13 +106,14 @@ export async function addParticipant(
   // Check if participant already exists
   const existingIndex = session.participants.findIndex(p => p.id === participantId);
   if (existingIndex >= 0) {
-    // Preserve existing vote when rejoining
+    // Preserve existing vote and avatar when rejoining
     const existing = session.participants[existingIndex];
     session.participants[existingIndex] = {
       id: participantId,
       name,
       role,
       vote: existing.vote,  // Keep existing vote
+      avatar: existing.avatar || avatar,  // Keep existing avatar
     };
   } else {
     // New participant
@@ -119,6 +122,7 @@ export async function addParticipant(
       name,
       role,
       vote: null,
+      avatar,
     });
   }
 
@@ -139,7 +143,7 @@ export async function vote(sessionId: string, participantId: string, voteValue: 
   if (!session) return false;
 
   const participant = session.participants.find(p => p.id === participantId);
-  if (!participant || participant.role !== 'estimator') return false;
+  if (!participant || participant.role !== 'voter') return false;
 
   participant.vote = voteValue;
   await updateSession(session);
@@ -163,7 +167,7 @@ export async function reset(sessionId: string): Promise<boolean> {
   session.story = '';
   session.storyLocked = false;
   session.participants.forEach(p => {
-    if (p.role === 'estimator') {
+    if (p.role === 'voter') {
       p.vote = null;
     }
   });
@@ -177,6 +181,18 @@ export async function updateStory(sessionId: string, story: string, storyLocked:
 
   session.story = story;
   session.storyLocked = storyLocked;
+  await updateSession(session);
+  return true;
+}
+
+export async function updateAvatar(sessionId: string, participantId: string, avatar: string): Promise<boolean> {
+  const session = await getSession(sessionId);
+  if (!session) return false;
+
+  const participant = session.participants.find(p => p.id === participantId);
+  if (!participant) return false;
+
+  participant.avatar = avatar;
   await updateSession(session);
   return true;
 }
