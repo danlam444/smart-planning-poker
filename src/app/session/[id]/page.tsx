@@ -444,10 +444,13 @@ export default function SessionPage() {
     if (!joined || !myId) return;
 
     const sendHeartbeat = () => {
+      // Check ref to ensure we haven't left the session
+      if (!myIdRef.current) return;
+
       fetch(`/api/sessions/${sessionId}/heartbeat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ participantId: myId }),
+        body: JSON.stringify({ participantId: myIdRef.current }),
       }).catch(console.error);
     };
 
@@ -590,10 +593,10 @@ export default function SessionPage() {
     }
   }, [sessionId]);
 
-  const leaveSession = useCallback(() => {
-    // Clear stored participant info
-    localStorage.removeItem(getStorageKey(sessionId));
-    // Reset state to show join form
+  const leaveSession = useCallback(async () => {
+    const participantIdToRemove = myId;
+
+    // Clear state immediately to stop heartbeat and prevent race conditions
     setJoined(false);
     setMyId(null);
     myIdRef.current = null;
@@ -603,7 +606,23 @@ export default function SessionPage() {
     setParticipantName('');
     setMyAvatar('');
     myAvatarRef.current = '';
-  }, [sessionId]);
+
+    // Clear stored participant info
+    localStorage.removeItem(getStorageKey(sessionId));
+
+    // Remove participant from session on server
+    if (participantIdToRemove) {
+      try {
+        await fetch(`/api/sessions/${sessionId}/leave`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participantId: participantIdToRemove }),
+        });
+      } catch (err) {
+        console.error('Failed to leave session:', err);
+      }
+    }
+  }, [sessionId, myId]);
 
   const cycleAvatar = useCallback(async () => {
     if (!myId || !myAvatar) return;

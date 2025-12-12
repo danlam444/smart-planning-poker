@@ -214,6 +214,18 @@ export async function updateHeartbeat(sessionId: string, participantId: string):
   return true;
 }
 
+export async function removeParticipant(sessionId: string, participantId: string): Promise<boolean> {
+  const session = await getSession(sessionId);
+  if (!session) return false;
+
+  const index = session.participants.findIndex(p => p.id === participantId);
+  if (index === -1) return false;
+
+  session.participants.splice(index, 1);
+  await updateSession(session);
+  return true;
+}
+
 export async function deleteSession(id: string): Promise<boolean> {
   const client = await getRedisClient();
   if (client) {
