@@ -604,6 +604,51 @@ test.describe('Planning Poker Session', () => {
     await context2.close();
   });
 
+  test('participant is removed from session when clicking leave button', async ({ browser }) => {
+    // Create a session
+    const context1 = await browser.newContext();
+    const voter1 = await context1.newPage();
+
+    await voter1.goto('/');
+    await voter1.fill('#sessionName', 'Leave Test Sprint');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = voter1.url();
+
+    // Voter 1 joins
+    await voter1.fill('#name', 'Voter1');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1.getByText('Participants')).toBeVisible();
+
+    // Voter 2 joins the same session
+    const context2 = await browser.newContext();
+    const voter2 = await context2.newPage();
+    await voter2.goto(sessionUrl);
+    await voter2.fill('#name', 'Voter2');
+    await voter2.click('button[type="submit"]');
+    await expect(voter2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+    await expect(voter2.getByText('Voter2')).toBeVisible();
+
+    // Voter1 should see both participants
+    await expect(voter1.getByText('Voter2')).toBeVisible({ timeout: 10000 });
+
+    // Voter2 clicks the leave button
+    await voter2.locator('button[title="Leave session"]').click();
+
+    // Voter2 should see the join form again
+    await expect(voter2.locator('#name')).toBeVisible({ timeout: 10000 });
+
+    // Voter1 should no longer see Voter2 in participants
+    await expect(voter1.getByText('Voter2')).not.toBeVisible({ timeout: 10000 });
+
+    // Voter1 should still see themselves
+    await expect(voter1.getByText('Voter1')).toBeVisible();
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
+
   test('participant can close browser and rejoin with same profile', async ({ browser }) => {
     // Create a session and join as voter
     const context1 = await browser.newContext();
