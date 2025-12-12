@@ -10,6 +10,7 @@ export interface Participant {
   role: 'voter' | 'observer';
   vote: string | null;
   avatar: string;
+  lastHeartbeat?: string;
 }
 
 export interface Session {
@@ -103,6 +104,8 @@ export async function addParticipant(
     session = await createSession(sessionId, 'Planning Session');
   }
 
+  const now = new Date().toISOString();
+
   // Check if participant already exists
   const existingIndex = session.participants.findIndex(p => p.id === participantId);
   if (existingIndex >= 0) {
@@ -114,6 +117,7 @@ export async function addParticipant(
       role,
       vote: existing.vote,  // Keep existing vote
       avatar: existing.avatar || avatar,  // Keep existing avatar
+      lastHeartbeat: now,
     };
   } else {
     // New participant
@@ -123,6 +127,7 @@ export async function addParticipant(
       role,
       vote: null,
       avatar,
+      lastHeartbeat: now,
     });
   }
 
@@ -193,6 +198,18 @@ export async function updateAvatar(sessionId: string, participantId: string, ava
   if (!participant) return false;
 
   participant.avatar = avatar;
+  await updateSession(session);
+  return true;
+}
+
+export async function updateHeartbeat(sessionId: string, participantId: string): Promise<boolean> {
+  const session = await getSession(sessionId);
+  if (!session) return false;
+
+  const participant = session.participants.find(p => p.id === participantId);
+  if (!participant) return false;
+
+  participant.lastHeartbeat = new Date().toISOString();
   await updateSession(session);
   return true;
 }

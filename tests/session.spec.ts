@@ -515,6 +515,95 @@ test.describe('Planning Poker Session', () => {
     await context2.close();
   });
 
+  test('participant shows as offline when browser closes', async ({ browser }) => {
+    // Create a session
+    const context1 = await browser.newContext();
+    const voter1 = await context1.newPage();
+
+    await voter1.goto('/');
+    await voter1.fill('#sessionName', 'Presence Test Sprint');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = voter1.url();
+
+    // Voter 1 joins
+    await voter1.fill('#name', 'Voter1');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1.getByText('Participants')).toBeVisible();
+
+    // Voter 2 joins the same session
+    const context2 = await browser.newContext();
+    const voter2 = await context2.newPage();
+    await voter2.goto(sessionUrl);
+    await voter2.fill('#name', 'Voter2');
+    await voter2.click('button[type="submit"]');
+    await expect(voter2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+    await expect(voter2.getByText('Voter2')).toBeVisible();
+
+    // Both should be online initially (no "Offline" label visible under participant names)
+    // Use exact text match for the offline label
+    await expect(voter1.locator('span', { hasText: /^Offline$/ })).not.toBeVisible();
+
+    // Close Voter2's browser context (simulates closing browser)
+    await context2.close();
+
+    // Wait for heartbeat timeout (30 seconds) + a buffer
+    // For testing, we'll check after the offline threshold passes
+    // The offline threshold is 30 seconds, so we wait slightly more
+    await voter1.waitForTimeout(35000);
+
+    // Voter1 should now see Voter2 as offline (the "Offline" label under name)
+    await expect(voter1.locator('span', { hasText: /^Offline$/ })).toBeVisible({ timeout: 10000 });
+
+    // Voter2's avatar should have grayscale styling
+    // The grayscale class is applied to the img inside the participant card
+    const voter2Card = voter1.locator('img.grayscale').first();
+    await expect(voter2Card).toBeVisible();
+
+    // Cleanup
+    await context1.close();
+  });
+
+  test('participant shows as online when connected', async ({ browser }) => {
+    // Create a session
+    const context1 = await browser.newContext();
+    const voter1 = await context1.newPage();
+
+    await voter1.goto('/');
+    await voter1.fill('#sessionName', 'Connected Test Sprint');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = voter1.url();
+
+    // Voter 1 joins
+    await voter1.fill('#name', 'Voter1');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1.getByText('Participants')).toBeVisible();
+
+    // Voter 2 joins the same session
+    const context2 = await browser.newContext();
+    const voter2 = await context2.newPage();
+    await voter2.goto(sessionUrl);
+    await voter2.fill('#name', 'Voter2');
+    await voter2.click('button[type="submit"]');
+    await expect(voter2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+
+    // Wait a few seconds to ensure heartbeats are being sent
+    await voter1.waitForTimeout(3000);
+
+    // Both participants should be online (no "Offline" label under participant names)
+    await expect(voter1.locator('span', { hasText: /^Offline$/ })).not.toBeVisible();
+    await expect(voter2.locator('span', { hasText: /^Offline$/ })).not.toBeVisible();
+
+    // No grayscale images should be visible (all online)
+    await expect(voter1.locator('img.grayscale')).toHaveCount(0);
+    await expect(voter2.locator('img.grayscale')).toHaveCount(0);
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
+
   test('participant can close browser and rejoin with same profile', async ({ browser }) => {
     // Create a session and join as voter
     const context1 = await browser.newContext();
