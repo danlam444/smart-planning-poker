@@ -115,18 +115,20 @@ function ParticipantCard({
   participant,
   isMe,
   revealed,
-  onAvatarClick
+  onAvatarClick,
+  isOnline = true
 }: {
   participant: Participant;
   isMe: boolean;
   revealed: boolean;
   onAvatarClick?: () => void;
+  isOnline?: boolean;
 }) {
   const hasVoted = participant.vote !== null;
   const avatarSrc = `/avatars/${participant.avatar || 'chicken'}.png`;
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className={`flex flex-col items-center gap-2 ${!isOnline ? 'opacity-50' : ''}`}>
       <div
         className={`relative w-16 h-24 rounded-lg transition-all duration-200 ${
           isMe ? 'ring-2 ring-[#635bff] ring-offset-2' : ''
@@ -141,18 +143,18 @@ function ParticipantCard({
       >
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           {revealed && hasVoted ? (
-            <span className="text-2xl font-semibold text-white">{participant.vote}</span>
+            <span className={`text-2xl font-semibold text-white ${!isOnline ? 'grayscale' : ''}`}>{participant.vote}</span>
           ) : hasVoted ? (
             <img
               src={avatarSrc}
               alt={participant.avatar}
-              className="w-12 h-12 object-contain opacity-90"
+              className={`w-12 h-12 object-contain opacity-90 ${!isOnline ? 'grayscale' : ''}`}
             />
           ) : (
             <img
               src={avatarSrc}
               alt={participant.avatar}
-              className="w-12 h-12 object-contain"
+              className={`w-12 h-12 object-contain ${!isOnline ? 'grayscale' : ''}`}
             />
           )}
         </div>
@@ -163,11 +165,16 @@ function ParticipantCard({
           </svg>
         </div>
       </div>
-      <span className={`text-xs font-medium truncate max-w-16 ${
-        isMe ? 'text-[#635bff] font-semibold' : 'text-[#3c4257]'
-      }`}>
-        {participant.name}
-      </span>
+      <div className="flex flex-col items-center">
+        <span className={`text-xs font-medium truncate max-w-16 ${
+          isMe ? 'text-[#635bff] font-semibold' : 'text-[#3c4257]'
+        }`}>
+          {participant.name}
+        </span>
+        {!isOnline && (
+          <span className="text-[10px] text-[#8792a2]">Offline</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -206,6 +213,19 @@ interface Participant {
   role: ParticipantRole;
   vote: string | null;
   avatar: string;
+  lastHeartbeat?: string;
+}
+
+// Heartbeat interval in ms (10 seconds)
+const HEARTBEAT_INTERVAL = 10000;
+// Offline threshold in ms (30 seconds)
+const OFFLINE_THRESHOLD = 30000;
+
+function isParticipantOnline(participant: Participant): boolean {
+  if (!participant.lastHeartbeat) return false;
+  const lastHeartbeat = new Date(participant.lastHeartbeat).getTime();
+  const now = Date.now();
+  return now - lastHeartbeat < OFFLINE_THRESHOLD;
 }
 
 interface SessionState {
@@ -418,6 +438,26 @@ export default function SessionPage() {
       pusher.unsubscribe(`session-${sessionId}`);
     };
   }, [sessionId]);
+
+  // Send heartbeat every 10 seconds when joined
+  useEffect(() => {
+    if (!joined || !myId) return;
+
+    const sendHeartbeat = () => {
+      fetch(`/api/sessions/${sessionId}/heartbeat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ participantId: myId }),
+      }).catch(console.error);
+    };
+
+    // Send initial heartbeat
+    sendHeartbeat();
+
+    const interval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
+
+    return () => clearInterval(interval);
+  }, [sessionId, joined, myId]);
 
   const joinSession = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -835,41 +875,50 @@ export default function SessionPage() {
                 isMe={p.id === myId}
                 revealed={session?.revealed ?? false}
                 onAvatarClick={p.id === myId ? cycleAvatar : undefined}
+                isOnline={isParticipantOnline(p)}
               />
             ))}
             {/* Observers */}
-            {session?.participants.filter((p) => p.role === 'observer').map((p: Participant) => (
-              <div key={p.id} className="flex flex-col items-center gap-2">
-                <div
-                  className={`relative w-16 h-24 rounded-lg bg-[#f6f9fc] border border-[#e3e8ee] ${
-                    p.id === myId ? 'ring-2 ring-[#635bff] ring-offset-2 cursor-pointer' : ''
-                  }`}
-                  style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
-                  onClick={p.id === myId ? cycleAvatar : undefined}
-                  title={p.id === myId ? 'Click to change avatar' : undefined}
-                >
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <img
-                      src={`/avatars/${p.avatar || 'chicken'}.png`}
-                      alt={p.avatar || 'chicken'}
-                      className="w-12 h-12 object-contain"
-                    />
+            {session?.participants.filter((p) => p.role === 'observer').map((p: Participant) => {
+              const isOnline = isParticipantOnline(p);
+              return (
+                <div key={p.id} className={`flex flex-col items-center gap-2 ${!isOnline ? 'opacity-50' : ''}`}>
+                  <div
+                    className={`relative w-16 h-24 rounded-lg bg-[#f6f9fc] border border-[#e3e8ee] ${
+                      p.id === myId ? 'ring-2 ring-[#635bff] ring-offset-2 cursor-pointer' : ''
+                    }`}
+                    style={{ boxShadow: '0 2px 4px rgba(0,0,0,0.04)' }}
+                    onClick={p.id === myId ? cycleAvatar : undefined}
+                    title={p.id === myId ? 'Click to change avatar' : undefined}
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <img
+                        src={`/avatars/${p.avatar || 'chicken'}.png`}
+                        alt={p.avatar || 'chicken'}
+                        className={`w-12 h-12 object-contain ${!isOnline ? 'grayscale' : ''}`}
+                      />
+                    </div>
+                    {/* Observer eye icon */}
+                    <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-[#635bff] flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    </div>
                   </div>
-                  {/* Observer eye icon */}
-                  <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-[#635bff] flex items-center justify-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
+                  <div className="flex flex-col items-center">
+                    <span className={`text-xs font-medium truncate max-w-16 ${
+                      p.id === myId ? 'text-[#635bff] font-semibold' : 'text-[#3c4257]'
+                    }`}>
+                      {p.name}
+                    </span>
+                    {!isOnline && (
+                      <span className="text-[10px] text-[#8792a2]">Offline</span>
+                    )}
                   </div>
                 </div>
-                <span className={`text-xs font-medium truncate max-w-16 ${
-                  p.id === myId ? 'text-[#635bff] font-semibold' : 'text-[#3c4257]'
-                }`}>
-                  {p.name}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
