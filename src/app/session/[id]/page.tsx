@@ -187,6 +187,7 @@ const AVATARS = [
   'cow',
   'dog',
   'dragon',
+  'panda',
   'pig',
   'rabbit',
   'rat',
