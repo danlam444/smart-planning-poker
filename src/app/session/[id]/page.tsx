@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { getPusherClient } from '@/lib/pusher-client';
 import { VOTING_SCALES, SCALE_ORDER, type VotingScale } from '@/types/poker';
+import { getResultType, getConsensusVote, isParticipantOnline, getLastOccurrenceIds } from '@/lib/votingUtils';
 import type { Channel } from 'pusher-js';
 
 // Bell icon component
@@ -219,15 +220,6 @@ interface Participant {
 
 // Heartbeat interval in ms (10 seconds)
 const HEARTBEAT_INTERVAL = 10000;
-// Offline threshold in ms (30 seconds)
-const OFFLINE_THRESHOLD = 30000;
-
-function isParticipantOnline(participant: Participant): boolean {
-  if (!participant.lastHeartbeat) return false;
-  const lastHeartbeat = new Date(participant.lastHeartbeat).getTime();
-  const now = Date.now();
-  return now - lastHeartbeat < OFFLINE_THRESHOLD;
-}
 
 interface SessionState {
   id: string;
@@ -826,16 +818,7 @@ export default function SessionPage() {
             ) : (
               <ul className="space-y-2">
                 {(() => {
-                  // Find the last occurrence of each vote value
-                  const seenVotes = new Set<string>();
-                  const lastOfVoteIds = new Set<string>();
-                  for (let i = history.length - 1; i >= 0; i--) {
-                    const vote = history[i].vote;
-                    if (!seenVotes.has(vote)) {
-                      seenVotes.add(vote);
-                      lastOfVoteIds.add(history[i].id);
-                    }
-                  }
+                  const lastOfVoteIds = getLastOccurrenceIds(history);
                   return [...history].reverse().map((entry) => {
                     const isLastOfVote = lastOfVoteIds.has(entry.id);
                     return (
@@ -1183,54 +1166,6 @@ export default function SessionPage() {
       </div>
     </main>
   );
-}
-
-function getConsensusVote(participants: Participant[]): string | null {
-  const allVotes = participants
-    .filter((p) => p.role === 'voter')
-    .map((p) => p.vote)
-    .filter((v): v is string => v !== null);
-
-  if (allVotes.length < 2) return null;
-
-  // Check if all votes are the same
-  const firstVote = allVotes[0];
-  if (allVotes.every(v => v === firstVote)) {
-    return firstVote;
-  }
-  return null;
-}
-
-function getResultType(participants: Participant[]): 'consensus' | 'majority' | 'joint' | 'none' {
-  const allVotes = participants
-    .filter((p) => p.role === 'voter')
-    .map((p) => p.vote)
-    .filter((v): v is string => v !== null);
-
-  if (allVotes.length === 0) return 'none';
-
-  const voteCounts = allVotes.reduce((acc, vote) => {
-    acc[vote] = (acc[vote] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const maxCount = Math.max(...Object.values(voteCounts));
-  const majorityVotes = Object.entries(voteCounts)
-    .filter(([, count]) => count === maxCount)
-    .map(([vote]) => vote);
-
-  // Consensus: all votes are the same
-  if (allVotes.length > 1 && majorityVotes.length === 1 && maxCount === allVotes.length) {
-    return 'consensus';
-  }
-
-  // Joint majority: multiple values tied for the most votes
-  if (majorityVotes.length > 1) {
-    return 'joint';
-  }
-
-  // Single majority
-  return 'majority';
 }
 
 function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCustomVoteChange }: { participants: Participant[]; onSelectVote?: (vote: string) => void; canSelect?: boolean; customVote?: string; onCustomVoteChange?: (value: string) => void }) {

@@ -771,4 +771,264 @@ test.describe('Planning Poker Session', () => {
     await context1.close();
     await context2.close();
   });
+
+  test('bell notification is received by other participants', async ({ browser }) => {
+    // Create a session
+    const context1 = await browser.newContext();
+    const voter1 = await context1.newPage();
+
+    await voter1.goto('/');
+    await voter1.fill('#sessionName', 'Bell Test Sprint');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = voter1.url();
+
+    // Voter 1 joins
+    await voter1.fill('#name', 'Voter1');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1.getByText('Participants')).toBeVisible();
+
+    // Voter 2 joins
+    const context2 = await browser.newContext();
+    const voter2 = await context2.newPage();
+    await voter2.goto(sessionUrl);
+    await voter2.fill('#name', 'Voter2');
+    await voter2.click('button[type="submit"]');
+    await expect(voter2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+
+    // Set up a promise to detect the shake animation on voter2's page
+    const shakeDetected = voter2.waitForFunction(() => {
+      const main = document.querySelector('main');
+      return main?.classList.contains('animate-shake');
+    }, { timeout: 10000 });
+
+    // Voter 1 clicks the bell button
+    await voter1.locator('button[title="Ring bell to get attention"]').click();
+
+    // Voter 2's page should shake (the function should resolve when shake class is added)
+    await shakeDetected;
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
+
+  test('copy session link button copies URL to clipboard', async ({ page, context }) => {
+    // Grant clipboard permissions
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+
+    // Create a session
+    await page.goto('/');
+    await page.fill('#sessionName', 'Copy Link Test');
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = page.url();
+
+    // Join as voter
+    await page.fill('#name', 'Voter');
+    await page.click('button[type="submit"]');
+    await expect(page.getByText('Participants')).toBeVisible();
+
+    // Click the copy link button
+    await page.locator('button[title="Copy invite link"]').click();
+
+    // Should show "Link copied!" feedback
+    await expect(page.getByText('Link copied!')).toBeVisible();
+
+    // Verify clipboard contains the session URL
+    const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clipboardText).toBe(sessionUrl);
+  });
+
+  test('user can change avatar', async ({ page }) => {
+    // Create a session
+    await page.goto('/');
+    await page.fill('#sessionName', 'Avatar Test');
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL(/\/session\/[a-f0-9-]+/);
+
+    // Join as voter
+    await page.fill('#name', 'AvatarUser');
+    await page.click('button[type="submit"]');
+    await expect(page.getByText('Participants')).toBeVisible();
+
+    // Find the user's participant card (contains their name) and get the avatar img inside
+    const userCard = page.locator('div').filter({ hasText: /^AvatarUser$/ }).first().locator('..').locator('..');
+    const avatarImg = userCard.locator('img').first();
+    await expect(avatarImg).toBeVisible({ timeout: 5000 });
+    const initialSrc = await avatarImg.getAttribute('src');
+
+    // Click on the participant card to change avatar (title="Click to change avatar")
+    await page.locator('[title="Click to change avatar"]').click();
+
+    // Avatar should change (src should be different)
+    await expect(avatarImg).not.toHaveAttribute('src', initialSrc!, { timeout: 5000 });
+  });
+
+  test('custom vote input allows entering custom value', async ({ browser }) => {
+    // Create a session with 2 voters
+    const context1 = await browser.newContext();
+    const voter1 = await context1.newPage();
+
+    await voter1.goto('/');
+    await voter1.fill('#sessionName', 'Custom Vote Test');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = voter1.url();
+
+    // Voter 1 joins
+    await voter1.fill('#name', 'Voter1');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1.getByText('Participants')).toBeVisible();
+
+    // Voter 2 joins
+    const context2 = await browser.newContext();
+    const voter2 = await context2.newPage();
+    await voter2.goto(sessionUrl);
+    await voter2.fill('#name', 'Voter2');
+    await voter2.click('button[type="submit"]');
+    await expect(voter2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+
+    // Enter a story name
+    const storyInput = voter1.locator('input[placeholder="Enter story title or ticket number..."]');
+    await storyInput.fill('Custom Value Story');
+    await storyInput.press('Enter');
+
+    // Both vote different values
+    await voter1.getByRole('button', { name: '5', exact: true }).click();
+    await voter2.getByRole('button', { name: '8', exact: true }).click();
+
+    // Reveal votes
+    await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
+    await expect(voter1.getByText('Average')).toBeVisible({ timeout: 10000 });
+
+    // Enter a custom value in the input field
+    const customInput = voter1.locator('input[placeholder="?"]');
+    await customInput.fill('7');
+
+    // Click on a result value to save (it should use the custom value)
+    const majoritySection = voter1.locator('.border-t.border-\\[\\#e3e8ee\\]');
+    await majoritySection.getByText('5').click();
+
+    // History should show the custom value "7" not "5"
+    const historyItem = voter1.locator('ul.space-y-2 > li').first();
+    await expect(historyItem).toContainText('7');
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
+
+  test('joint majority displays all tied values', async ({ browser }) => {
+    // Create a session with 4 voters to create a tie
+    const context1 = await browser.newContext();
+    const voter1 = await context1.newPage();
+
+    await voter1.goto('/');
+    await voter1.fill('#sessionName', 'Joint Majority Test');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = voter1.url();
+
+    // Voter 1 joins
+    await voter1.fill('#name', 'Voter1');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1.getByText('Participants')).toBeVisible();
+
+    // Voter 2 joins
+    const context2 = await browser.newContext();
+    const voter2 = await context2.newPage();
+    await voter2.goto(sessionUrl);
+    await voter2.fill('#name', 'Voter2');
+    await voter2.click('button[type="submit"]');
+    await expect(voter2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+
+    // Voter 3 joins
+    const context3 = await browser.newContext();
+    const voter3 = await context3.newPage();
+    await voter3.goto(sessionUrl);
+    await voter3.fill('#name', 'Voter3');
+    await voter3.click('button[type="submit"]');
+    await expect(voter3.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+
+    // Voter 4 joins
+    const context4 = await browser.newContext();
+    const voter4 = await context4.newPage();
+    await voter4.goto(sessionUrl);
+    await voter4.fill('#name', 'Voter4');
+    await voter4.click('button[type="submit"]');
+    await expect(voter4.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+
+    // Create a tie: 2 vote for 5, 2 vote for 8
+    await voter1.getByRole('button', { name: '5', exact: true }).click();
+    await voter2.getByRole('button', { name: '5', exact: true }).click();
+    await voter3.getByRole('button', { name: '8', exact: true }).click();
+    await voter4.getByRole('button', { name: '8', exact: true }).click();
+
+    // Reveal votes
+    await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
+
+    // Should show "Joint Majority" text
+    await expect(voter1.getByText('Joint Majority').first()).toBeVisible({ timeout: 10000 });
+
+    // Both tied values should be displayed
+    const majoritySection = voter1.locator('.border-t.border-\\[\\#e3e8ee\\]');
+    await expect(majoritySection.getByText('5')).toBeVisible();
+    await expect(majoritySection.getByText('8')).toBeVisible();
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+    await context3.close();
+    await context4.close();
+  });
+
+  test('empty session name is not allowed', async ({ page }) => {
+    await page.goto('/');
+
+    // Submit button should be disabled when session name is empty
+    const submitButton = page.locator('button[type="submit"]');
+    await expect(submitButton).toBeDisabled();
+
+    // Try entering whitespace only
+    await page.fill('#sessionName', '   ');
+    await expect(submitButton).toBeDisabled();
+
+    // Enter valid name
+    await page.fill('#sessionName', 'Valid Name');
+    await expect(submitButton).toBeEnabled();
+  });
+
+  test('empty participant name is not allowed', async ({ page }) => {
+    // Create a session
+    await page.goto('/');
+    await page.fill('#sessionName', 'Validation Test');
+    await page.click('button[type="submit"]');
+    await expect(page).toHaveURL(/\/session\/[a-f0-9-]+/);
+
+    // Submit button should be disabled when name is empty
+    const submitButton = page.locator('button[type="submit"]');
+    await expect(submitButton).toBeDisabled();
+
+    // Try entering whitespace only
+    await page.fill('#name', '   ');
+    await expect(submitButton).toBeDisabled();
+
+    // Enter valid name
+    await page.fill('#name', 'Valid Name');
+    await expect(submitButton).toBeEnabled();
+  });
+
+  test('invalid session ID shows error or redirects', async ({ page }) => {
+    // Navigate to a non-existent session
+    await page.goto('/session/invalid-session-id-12345');
+
+    // Should either show an error message or the join form
+    // The app should handle this gracefully
+    const hasError = await page.getByText(/not found|error|invalid/i).isVisible().catch(() => false);
+    const hasJoinForm = await page.locator('#name').isVisible().catch(() => false);
+
+    // Either an error is shown or the join form is displayed (app handles gracefully)
+    expect(hasError || hasJoinForm).toBe(true);
+  });
 });
