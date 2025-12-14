@@ -825,15 +825,30 @@ export default function SessionPage() {
               </div>
             ) : (
               <ul className="space-y-2">
-                {history.map((entry) => (
-                  <li
-                    key={entry.id}
-                    className="flex justify-between items-center p-2.5 bg-[#f6f9fc] rounded-md hover:bg-[#e3e8ee] transition-colors"
-                  >
-                    <span className="text-sm truncate flex-1 mr-2 text-[#3c4257]">{entry.story}</span>
-                    <span className="text-sm font-semibold text-[#635bff] bg-[#f5f8ff] px-2 py-0.5 rounded">{entry.vote}</span>
-                  </li>
-                ))}
+                {(() => {
+                  // Find the last occurrence of each vote value
+                  const seenVotes = new Set<string>();
+                  const lastOfVoteIds = new Set<string>();
+                  for (let i = history.length - 1; i >= 0; i--) {
+                    const vote = history[i].vote;
+                    if (!seenVotes.has(vote)) {
+                      seenVotes.add(vote);
+                      lastOfVoteIds.add(history[i].id);
+                    }
+                  }
+                  return [...history].reverse().map((entry) => {
+                    const isLastOfVote = lastOfVoteIds.has(entry.id);
+                    return (
+                      <li
+                        key={entry.id}
+                        className={`flex justify-between items-center p-2.5 bg-[#f6f9fc] rounded-md hover:bg-[#e3e8ee] transition-colors ${isLastOfVote ? 'border-l-2 border-l-[#635bff]' : ''}`}
+                      >
+                        <span className="text-sm truncate flex-1 mr-2 text-[#3c4257]">{entry.story}</span>
+                        <span className="text-sm font-semibold text-[#635bff] bg-[#f5f8ff] px-2 py-0.5 rounded">{entry.vote}</span>
+                      </li>
+                    );
+                  });
+                })()}
               </ul>
             )}
           </div>

@@ -699,4 +699,76 @@ test.describe('Planning Poker Session', () => {
     // Cleanup
     await context2.close();
   });
+
+  test('last occurrence of each estimate value in history is highlighted', async ({ browser }) => {
+    // Create a session with 2 voters for reliable consensus
+    const context1 = await browser.newContext();
+    const voter1 = await context1.newPage();
+
+    await voter1.goto('/');
+    await voter1.fill('#sessionName', 'History Highlight Test');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = voter1.url();
+
+    // Voter 1 joins
+    await voter1.fill('#name', 'Voter1');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1.getByText('Participants')).toBeVisible();
+
+    // Voter 2 joins
+    const context2 = await browser.newContext();
+    const voter2 = await context2.newPage();
+    await voter2.goto(sessionUrl);
+    await voter2.fill('#name', 'Voter2');
+    await voter2.click('button[type="submit"]');
+    await expect(voter2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+
+    const storyInput = voter1.locator('input[placeholder="Enter story title or ticket number..."]');
+
+    // Add first story with vote "5" (consensus)
+    await storyInput.fill('Story A');
+    await storyInput.press('Enter');
+    await voter1.getByRole('button', { name: '5', exact: true }).click();
+    await voter2.getByRole('button', { name: '5', exact: true }).click();
+    await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
+    await expect(voter1.getByText('Consensus!')).toBeVisible({ timeout: 10000 });
+    await voter1.getByRole('button', { name: 'New Round' }).click();
+
+    // Add second story with vote "3" (consensus)
+    await storyInput.fill('Story B');
+    await storyInput.press('Enter');
+    await voter1.getByRole('button', { name: '3', exact: true }).click();
+    await voter2.getByRole('button', { name: '3', exact: true }).click();
+    await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
+    await expect(voter1.getByText('Consensus!')).toBeVisible({ timeout: 10000 });
+    await voter1.getByRole('button', { name: 'New Round' }).click();
+
+    // Add third story with vote "5" (same as first, consensus)
+    await storyInput.fill('Story C');
+    await storyInput.press('Enter');
+    await voter1.getByRole('button', { name: '5', exact: true }).click();
+    await voter2.getByRole('button', { name: '5', exact: true }).click();
+    await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
+    await expect(voter1.getByText('Consensus!')).toBeVisible({ timeout: 10000 });
+
+    // History displays newest first: Story C (5), Story B (3), Story A (5)
+    // Story C and Story B should be highlighted (last of their vote values)
+    // Story A should NOT be highlighted (not the last "5")
+
+    const historyItems = voter1.locator('ul.space-y-2 > li');
+
+    // Story C (first item, newest) should have the highlight border (last "5")
+    await expect(historyItems.nth(0)).toHaveClass(/border-l-2/);
+
+    // Story B (second item) should have the highlight border (last "3")
+    await expect(historyItems.nth(1)).toHaveClass(/border-l-2/);
+
+    // Story A (third item, oldest) should NOT have the highlight border
+    await expect(historyItems.nth(2)).not.toHaveClass(/border-l-2/);
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
 });
