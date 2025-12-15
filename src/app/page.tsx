@@ -3,6 +3,29 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  name: 'Planning Poker',
+  description: 'Free real-time planning poker for agile teams. Estimate user stories together with your remote team.',
+  url: 'https://smart-planning-poker.vercel.app',
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Any',
+  offers: {
+    '@type': 'Offer',
+    price: '0',
+    priceCurrency: 'USD',
+  },
+  featureList: [
+    'Real-time collaboration',
+    'Fibonacci scale',
+    'T-shirt sizing',
+    'Custom voting scales',
+    'No sign-up required',
+    'Mobile friendly',
+  ],
+};
+
 export default function Home() {
   const [sessionName, setSessionName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -32,8 +55,13 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-8">
-      <div className="max-w-md w-full space-y-8">
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <main className="min-h-screen flex flex-col items-center justify-center p-8">
+        <div className="max-w-md w-full space-y-8">
         <div className="text-center">
           <h1 className="text-4xl font-bold mb-2">Planning Poker</h1>
           <p className="text-gray-600 dark:text-gray-400">
@@ -64,7 +92,8 @@ export default function Home() {
             {isCreating ? 'Creating...' : 'Create Session'}
           </button>
         </form>
-      </div>
-    </main>
+        </div>
+      </main>
+    </>
   );
 }
