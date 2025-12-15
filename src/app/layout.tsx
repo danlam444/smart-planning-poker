@@ -22,11 +22,11 @@ export const metadata: Metadata = {
   keywords: ["planning poker", "scrum poker", "agile estimation", "story points", "sprint planning", "remote team", "fibonacci", "t-shirt sizing"],
   authors: [{ name: "Planning Poker" }],
   creator: "Planning Poker",
-  metadataBase: new URL("https://smartplanningpoker.com"),
+  metadataBase: new URL("https://smart-planning-poker.vercel.app"),
   openGraph: {
     type: "website",
     locale: "en_US",
-    url: "https://smartplanningpoker.com",
+    url: "https://smart-planning-poker.vercel.app",
     siteName: "Planning Poker",
     title: "Planning Poker - Free Online Scrum Estimation Tool",
     description: "Free real-time planning poker for agile teams. Estimate user stories together with your remote team. No sign-up required.",

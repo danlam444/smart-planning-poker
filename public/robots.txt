@@ -3,4 +3,4 @@ User-agent: *
 Allow: /
 
 # Sitemap location
-Sitemap: https://smartplanningpoker.com/sitemap.xml
+Sitemap: https://smart-planning-poker.vercel.app/sitemap.xml

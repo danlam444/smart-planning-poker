@@ -8,7 +8,7 @@ const jsonLd = {
   '@type': 'WebApplication',
   name: 'Planning Poker',
   description: 'Free real-time planning poker for agile teams. Estimate user stories together with your remote team.',
-  url: 'https://smartplanningpoker.com',
+  url: 'https://smart-planning-poker.vercel.app',
   applicationCategory: 'BusinessApplication',
   operatingSystem: 'Any',
   offers: {
