@@ -179,7 +179,9 @@ test.describe('Planning Poker Session', () => {
 
     // Click the same button again to toggle off
     await page.getByRole('button', { name: '5' }).click();
-    await page.waitForTimeout(500); // Allow vote toggle to sync to server
+
+    // Wait for vote button to lose highlight (indicates server processed toggle)
+    await expect(voteButton).not.toHaveClass(/bg-\[#635bff\]/, { timeout: 5000 });
 
     // Card should return to not-voted state (no participant cards with purple background)
     const participantCardsAfterToggle = page.locator('.w-16.h-24.bg-\\[\\#635bff\\]');
@@ -215,6 +217,8 @@ test.describe('Planning Poker Session', () => {
     // Both voters vote
     await estimator1.getByRole('button', { name: '5' }).click();
     await estimator2.getByRole('button', { name: '8' }).click();
+    // Brief wait for votes to sync via Pusher
+    await estimator1.waitForTimeout(300);
 
     // Verify both have voted (Stripe purple card backgrounds visible)
     await expect(estimator1.locator('.bg-\\[\\#635bff\\]').first()).toBeVisible();
@@ -265,11 +269,15 @@ test.describe('Planning Poker Session', () => {
     await estimator2.fill('#name', 'Voter2');
     await estimator2.click('button[type="submit"]');
     await expect(estimator2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+    // Brief delay for Pusher events to settle after join
+    await estimator1.waitForTimeout(200);
 
-    // Enter a story name and press Enter to sync it to the server
+    // Enter a story name and press Enter to lock it
     await estimator1.fill('input[placeholder="Enter story title or ticket number..."]', 'User Login Feature');
     await estimator1.locator('input[placeholder="Enter story title or ticket number..."]').press('Enter');
-    await estimator1.waitForTimeout(500); // Allow story to sync to server
+    // Wait for story to be locked, then brief delay for server sync
+    await expect(estimator1.locator('[title="Click to edit"]')).toBeVisible({ timeout: 5000 });
+    await estimator1.waitForTimeout(300);
 
     // Both voters vote the same value (consensus)
     await estimator1.getByRole('button', { name: '5' }).click();
@@ -313,11 +321,15 @@ test.describe('Planning Poker Session', () => {
     await estimator2.fill('#name', 'Voter2');
     await estimator2.click('button[type="submit"]');
     await expect(estimator2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+    // Brief delay for Pusher events to settle after join
+    await estimator1.waitForTimeout(200);
 
-    // Enter a story name and press Enter to sync it to the server
+    // Enter a story name and press Enter to lock it
     await estimator1.fill('input[placeholder="Enter story title or ticket number..."]', 'Payment Integration');
     await estimator1.locator('input[placeholder="Enter story title or ticket number..."]').press('Enter');
-    await estimator1.waitForTimeout(500); // Allow story to sync to server
+    // Wait for story to be locked, then brief delay for server sync
+    await expect(estimator1.locator('[title="Click to edit"]')).toBeVisible({ timeout: 5000 });
+    await estimator1.waitForTimeout(300);
 
     // Voters vote different values (no consensus, creates majority)
     await estimator1.getByRole('button', { name: '5' }).click();
@@ -731,16 +743,18 @@ test.describe('Planning Poker Session', () => {
     await voter2.fill('#name', 'Voter2');
     await voter2.click('button[type="submit"]');
     await expect(voter2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+    // Brief delay for Pusher events to settle after join
+    await voter1.waitForTimeout(200);
 
     const storyInput = voter1.locator('input[placeholder="Enter story title or ticket number..."]');
 
     // Add first story with vote "5" (consensus)
-    // Note: After press('Enter'), we wait briefly to ensure story syncs to server
-    // before proceeding with votes. This prevents race conditions where the
-    // reveal event arrives before the story is saved on the server.
     await storyInput.fill('Story A');
     await storyInput.press('Enter');
-    await voter1.waitForTimeout(500); // Allow story to sync to server
+    // Wait for story to be locked (local indicator that input was processed)
+    await expect(voter1.locator('[title="Click to edit"]')).toBeVisible({ timeout: 5000 });
+    // Small delay for server sync (fire-and-forget API call)
+    await voter1.waitForTimeout(300);
     await voter1.getByRole('button', { name: '5', exact: true }).click();
     await voter2.getByRole('button', { name: '5', exact: true }).click();
     await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
@@ -748,12 +762,19 @@ test.describe('Planning Poker Session', () => {
     // Wait for history item to appear before proceeding
     await expect(voter1.locator('ul.space-y-2 > li')).toHaveCount(1, { timeout: 10000 });
     await voter1.getByRole('button', { name: 'New Round' }).click();
-    await voter1.waitForTimeout(300); // Allow reset to complete on server
+    // Wait for story input to reappear and be empty (reset complete + Pusher clear event received)
+    await expect(storyInput).toBeVisible({ timeout: 5000 });
+    await expect(storyInput).toHaveValue('', { timeout: 5000 });
+    // Extra delay to ensure any pending Pusher events have been processed
+    await voter1.waitForTimeout(200);
 
     // Add second story with vote "3" (consensus)
     await storyInput.fill('Story B');
     await storyInput.press('Enter');
-    await voter1.waitForTimeout(500);
+    // Wait for story to be locked (local indicator that input was processed)
+    await expect(voter1.locator('[title="Click to edit"]')).toBeVisible({ timeout: 5000 });
+    // Small delay for server sync (fire-and-forget API call)
+    await voter1.waitForTimeout(300);
     await voter1.getByRole('button', { name: '3', exact: true }).click();
     await voter2.getByRole('button', { name: '3', exact: true }).click();
     await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
@@ -761,12 +782,19 @@ test.describe('Planning Poker Session', () => {
     // Wait for history item to appear before proceeding
     await expect(voter1.locator('ul.space-y-2 > li')).toHaveCount(2, { timeout: 10000 });
     await voter1.getByRole('button', { name: 'New Round' }).click();
-    await voter1.waitForTimeout(300); // Allow reset to complete on server
+    // Wait for story input to reappear and be empty (reset complete + Pusher clear event received)
+    await expect(storyInput).toBeVisible({ timeout: 5000 });
+    await expect(storyInput).toHaveValue('', { timeout: 5000 });
+    // Extra delay to ensure any pending Pusher events have been processed
+    await voter1.waitForTimeout(200);
 
     // Add third story with vote "5" (same as first, consensus)
     await storyInput.fill('Story C');
     await storyInput.press('Enter');
-    await voter1.waitForTimeout(500);
+    // Wait for story to be locked (local indicator that input was processed)
+    await expect(voter1.locator('[title="Click to edit"]')).toBeVisible({ timeout: 5000 });
+    // Small delay for server sync (fire-and-forget API call)
+    await voter1.waitForTimeout(300);
     await voter1.getByRole('button', { name: '5', exact: true }).click();
     await voter2.getByRole('button', { name: '5', exact: true }).click();
     await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
