@@ -179,6 +179,7 @@ test.describe('Planning Poker Session', () => {
 
     // Click the same button again to toggle off
     await page.getByRole('button', { name: '5' }).click();
+    await page.waitForTimeout(500); // Allow vote toggle to sync to server
 
     // Card should return to not-voted state (no participant cards with purple background)
     const participantCardsAfterToggle = page.locator('.w-16.h-24.bg-\\[\\#635bff\\]');
@@ -265,8 +266,10 @@ test.describe('Planning Poker Session', () => {
     await estimator2.click('button[type="submit"]');
     await expect(estimator2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
 
-    // Enter a story name
+    // Enter a story name and press Enter to sync it to the server
     await estimator1.fill('input[placeholder="Enter story title or ticket number..."]', 'User Login Feature');
+    await estimator1.locator('input[placeholder="Enter story title or ticket number..."]').press('Enter');
+    await estimator1.waitForTimeout(500); // Allow story to sync to server
 
     // Both voters vote the same value (consensus)
     await estimator1.getByRole('button', { name: '5' }).click();
@@ -311,8 +314,10 @@ test.describe('Planning Poker Session', () => {
     await estimator2.click('button[type="submit"]');
     await expect(estimator2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
 
-    // Enter a story name
+    // Enter a story name and press Enter to sync it to the server
     await estimator1.fill('input[placeholder="Enter story title or ticket number..."]', 'Payment Integration');
+    await estimator1.locator('input[placeholder="Enter story title or ticket number..."]').press('Enter');
+    await estimator1.waitForTimeout(500); // Allow story to sync to server
 
     // Voters vote different values (no consensus, creates majority)
     await estimator1.getByRole('button', { name: '5' }).click();
@@ -515,7 +520,10 @@ test.describe('Planning Poker Session', () => {
     await context2.close();
   });
 
-  test('participant shows as offline when browser closes', async ({ browser }) => {
+  test('participant shows as offline when browser closes', async ({ browser }, testInfo) => {
+    // This test waits 35s for heartbeat timeout, so we need a longer timeout
+    testInfo.setTimeout(60000);
+
     // Create a session
     const context1 = await browser.newContext();
     const voter1 = await context1.newPage();
@@ -727,26 +735,38 @@ test.describe('Planning Poker Session', () => {
     const storyInput = voter1.locator('input[placeholder="Enter story title or ticket number..."]');
 
     // Add first story with vote "5" (consensus)
+    // Note: After press('Enter'), we wait briefly to ensure story syncs to server
+    // before proceeding with votes. This prevents race conditions where the
+    // reveal event arrives before the story is saved on the server.
     await storyInput.fill('Story A');
     await storyInput.press('Enter');
+    await voter1.waitForTimeout(500); // Allow story to sync to server
     await voter1.getByRole('button', { name: '5', exact: true }).click();
     await voter2.getByRole('button', { name: '5', exact: true }).click();
     await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
     await expect(voter1.getByText('Consensus!')).toBeVisible({ timeout: 10000 });
+    // Wait for history item to appear before proceeding
+    await expect(voter1.locator('ul.space-y-2 > li')).toHaveCount(1, { timeout: 10000 });
     await voter1.getByRole('button', { name: 'New Round' }).click();
+    await voter1.waitForTimeout(300); // Allow reset to complete on server
 
     // Add second story with vote "3" (consensus)
     await storyInput.fill('Story B');
     await storyInput.press('Enter');
+    await voter1.waitForTimeout(500);
     await voter1.getByRole('button', { name: '3', exact: true }).click();
     await voter2.getByRole('button', { name: '3', exact: true }).click();
     await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
     await expect(voter1.getByText('Consensus!')).toBeVisible({ timeout: 10000 });
+    // Wait for history item to appear before proceeding
+    await expect(voter1.locator('ul.space-y-2 > li')).toHaveCount(2, { timeout: 10000 });
     await voter1.getByRole('button', { name: 'New Round' }).click();
+    await voter1.waitForTimeout(300); // Allow reset to complete on server
 
     // Add third story with vote "5" (same as first, consensus)
     await storyInput.fill('Story C');
     await storyInput.press('Enter');
+    await voter1.waitForTimeout(500);
     await voter1.getByRole('button', { name: '5', exact: true }).click();
     await voter2.getByRole('button', { name: '5', exact: true }).click();
     await voter1.getByRole('button', { name: 'Reveal Votes' }).click();
@@ -757,6 +777,10 @@ test.describe('Planning Poker Session', () => {
     // Story A should NOT be highlighted (not the last "5")
 
     const historyItems = voter1.locator('ul.space-y-2 > li');
+
+    // Wait for all 3 history items to be present before checking highlights
+    // Auto-save happens async via Pusher, so we need to wait for all items
+    await expect(historyItems).toHaveCount(3, { timeout: 10000 });
 
     // Story C (first item, newest) should have the highlight border (last "5")
     await expect(historyItems.nth(0)).toHaveClass(/border-l-2/);

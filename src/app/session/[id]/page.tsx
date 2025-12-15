@@ -1,267 +1,19 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { getPusherClient } from '@/lib/pusher-client';
-import { VOTING_SCALES, SCALE_ORDER, type VotingScale } from '@/types/poker';
+import { VOTING_SCALES, SCALE_ORDER, type VotingScale, type Participant, type SessionState, type HistoryEntry, type ParticipantRole } from '@/types/poker';
 import { getResultType, getConsensusVote, isParticipantOnline, getLastOccurrenceIds } from '@/lib/votingUtils';
+import { getStoredParticipant, storeParticipant, getStorageKey } from '@/lib/storage';
+import { getRandomAvatar, getNextAvatar } from '@/lib/avatars';
+import { BellIcon, ExitIcon, CopyIcon, EyeIcon, ClipboardIcon } from '@/components/icons';
+import { ParticipantCard } from '@/components/ParticipantCard';
+import { VoteSummary } from '@/components/VoteSummary';
 import type { Channel } from 'pusher-js';
-
-// Bell icon component
-function BellIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      className={className}
-    >
-      <path
-        fillRule="evenodd"
-        d="M5.25 9a6.75 6.75 0 0113.5 0v.75c0 2.123.8 4.057 2.118 5.52a.75.75 0 01-.297 1.206c-1.544.57-3.16.99-4.831 1.243a3.75 3.75 0 11-7.48 0 24.585 24.585 0 01-4.831-1.244.75.75 0 01-.298-1.205A8.217 8.217 0 005.25 9.75V9zm4.502 8.9a2.25 2.25 0 104.496 0 25.057 25.057 0 01-4.496 0z"
-        clipRule="evenodd"
-      />
-    </svg>
-  );
-}
-
-// Exit/Leave icon component (door with arrow)
-function ExitIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      className={className}
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-    </svg>
-  );
-}
-
-// Copy icon component (two squares)
-function CopyIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      className={className}
-    >
-      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
-    </svg>
-  );
-}
-
-// Sheep icon component
-function SheepIcon({ className, variant = 'dark' }: { className?: string; variant?: 'dark' | 'light' | 'purple' }) {
-  const colors = {
-    dark: { fill: '#3f3f46', face: '#fafafa', eyes: '#fafafa' },
-    light: { fill: '#fafafa', face: '#3f3f46', eyes: '#3f3f46' },
-    purple: { fill: '#7c3aed', face: '#fafafa', eyes: '#fafafa' },
-  };
-  const { fill: fillColor, face: faceColor, eyes: eyeColor } = colors[variant];
-  const strokeColor = fillColor;
-
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 100 80"
-      className={className}
-    >
-      {/* Body - fluffy cloud shape */}
-      <ellipse cx="50" cy="45" rx="30" ry="22" fill={fillColor} />
-      <circle cx="25" cy="42" r="12" fill={fillColor} />
-      <circle cx="75" cy="42" r="12" fill={fillColor} />
-      <circle cx="35" cy="30" r="10" fill={fillColor} />
-      <circle cx="50" cy="28" r="10" fill={fillColor} />
-      <circle cx="65" cy="30" r="10" fill={fillColor} />
-      <circle cx="30" cy="55" r="8" fill={fillColor} />
-      <circle cx="70" cy="55" r="8" fill={fillColor} />
-
-      {/* Tail */}
-      <circle cx="82" cy="45" r="5" fill={fillColor} />
-
-      {/* Legs */}
-      <rect x="32" y="58" width="4" height="16" rx="2" fill={strokeColor} />
-      <rect x="42" y="58" width="4" height="16" rx="2" fill={strokeColor} />
-      <rect x="54" y="58" width="4" height="16" rx="2" fill={strokeColor} />
-      <rect x="64" y="58" width="4" height="16" rx="2" fill={strokeColor} />
-
-      {/* Head */}
-      <ellipse cx="22" cy="35" rx="12" ry="14" fill={fillColor} />
-      <ellipse cx="22" cy="38" rx="8" ry="9" fill={faceColor} />
-
-      {/* Ears */}
-      <ellipse cx="12" cy="28" rx="5" ry="3" fill={faceColor} />
-      <ellipse cx="32" cy="28" rx="5" ry="3" fill={faceColor} />
-
-      {/* Eyes */}
-      <circle cx="18" cy="35" r="1.5" fill={eyeColor} />
-      <circle cx="26" cy="35" r="1.5" fill={eyeColor} />
-
-      {/* Nose */}
-      <ellipse cx="22" cy="42" rx="2" ry="1.5" fill={eyeColor} />
-    </svg>
-  );
-}
-
-// Participant card component - Stripe style
-function ParticipantCard({
-  participant,
-  isMe,
-  revealed,
-  onAvatarClick,
-  isOnline = true
-}: {
-  participant: Participant;
-  isMe: boolean;
-  revealed: boolean;
-  onAvatarClick?: () => void;
-  isOnline?: boolean;
-}) {
-  const hasVoted = participant.vote !== null;
-  const avatarSrc = `/avatars/${participant.avatar || 'chicken'}.png`;
-
-  return (
-    <div className={`flex flex-col items-center gap-2 ${!isOnline ? 'opacity-50' : ''}`}>
-      <div
-        className={`relative w-16 h-24 rounded-lg transition-all duration-200 ${
-          isMe ? 'ring-2 ring-[#635bff] ring-offset-2' : ''
-        } ${
-          hasVoted
-            ? 'bg-[#635bff]'
-            : 'bg-white border border-[#e3e8ee]'
-        } ${isMe ? 'cursor-pointer' : ''}`}
-        style={{ boxShadow: hasVoted ? '0 4px 12px rgba(99, 91, 255, 0.3)' : '0 2px 4px rgba(0,0,0,0.04)' }}
-        onClick={isMe ? onAvatarClick : undefined}
-        title={isMe ? 'Click to change avatar' : undefined}
-      >
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          {revealed && hasVoted ? (
-            <span className={`text-2xl font-semibold text-white ${!isOnline ? 'grayscale' : ''}`}>{participant.vote}</span>
-          ) : hasVoted ? (
-            <img
-              src={avatarSrc}
-              alt={participant.avatar}
-              className={`w-12 h-12 object-contain opacity-90 ${!isOnline ? 'grayscale' : ''}`}
-            />
-          ) : (
-            <img
-              src={avatarSrc}
-              alt={participant.avatar}
-              className={`w-12 h-12 object-contain ${!isOnline ? 'grayscale' : ''}`}
-            />
-          )}
-        </div>
-        {/* Voter clipboard icon */}
-        <div className={`absolute bottom-1 right-1 w-5 h-5 rounded-full flex items-center justify-center ${hasVoted ? 'bg-white/30' : 'bg-[#635bff]'}`}>
-          <svg xmlns="http://www.w3.org/2000/svg" className={`w-3 h-3 ${hasVoted ? 'text-white' : 'text-white'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-          </svg>
-        </div>
-      </div>
-      <div className="flex flex-col items-center">
-        <span className={`text-xs font-medium truncate max-w-16 ${
-          isMe ? 'text-[#635bff] font-semibold' : 'text-[#3c4257]'
-        }`}>
-          {participant.name}
-        </span>
-        {!isOnline && (
-          <span className="text-[10px] text-[#8792a2]">Offline</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-type ParticipantRole = 'voter' | 'observer';
-
-// Avatar list in alphabetical order
-const AVATARS = [
-  'chicken',
-  'cow',
-  'dog',
-  'dragon',
-  'panda',
-  'pig',
-  'rabbit',
-  'rat',
-  'sheep',
-  'snake',
-  'tiger',
-] as const;
-
-type AvatarType = typeof AVATARS[number];
-
-function getRandomAvatar(): AvatarType {
-  return AVATARS[Math.floor(Math.random() * AVATARS.length)];
-}
-
-function getNextAvatar(current: string): AvatarType {
-  const currentIndex = AVATARS.indexOf(current as AvatarType);
-  if (currentIndex === -1) return AVATARS[0];
-  return AVATARS[(currentIndex + 1) % AVATARS.length];
-}
-
-interface Participant {
-  id: string;
-  name: string;
-  role: ParticipantRole;
-  vote: string | null;
-  avatar: string;
-  lastHeartbeat?: string;
-}
 
 // Heartbeat interval in ms (10 seconds)
 const HEARTBEAT_INTERVAL = 10000;
-
-interface SessionState {
-  id: string;
-  name: string;
-  participants: Participant[];
-  revealed: boolean;
-  story?: string;
-  storyLocked?: boolean;
-}
-
-interface StoredParticipant {
-  name: string;
-  role: ParticipantRole;
-  participantId: string;
-  avatar: string;
-}
-
-interface HistoryEntry {
-  id: string;
-  story: string;
-  vote: string;
-  timestamp: number;
-}
-
-function getStorageKey(sessionId: string) {
-  return `poker-session-${sessionId}`;
-}
-
-function getStoredParticipant(sessionId: string): StoredParticipant | null {
-  if (typeof window === 'undefined') return null;
-  const stored = localStorage.getItem(getStorageKey(sessionId));
-  if (!stored) return null;
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return null;
-  }
-}
-
-function storeParticipant(sessionId: string, participant: StoredParticipant) {
-  localStorage.setItem(getStorageKey(sessionId), JSON.stringify(participant));
-}
 
 export default function SessionPage() {
   const params = useParams();
@@ -297,6 +49,32 @@ export default function SessionPage() {
     storyRef.current = story;
   }, [story]);
 
+  // =============================================================================
+  // MEMOIZED COMPUTATIONS
+  // =============================================================================
+  // useMemo prevents expensive re-calculations on every render.
+  // These values only recompute when their dependencies change.
+
+  /**
+   * Memoize which history entries should be highlighted.
+   * Only recomputes when the history array changes (new items added/removed).
+   * Without memoization, this Set would be rebuilt on every render.
+   */
+  const lastOccurrenceIds = useMemo(
+    () => getLastOccurrenceIds(history),
+    [history]
+  );
+
+  /**
+   * Memoize the reversed history for display.
+   * We show newest items first, but store oldest first for easier appending.
+   * Creating a new reversed array on every render would cause unnecessary work.
+   */
+  const reversedHistory = useMemo(
+    () => [...history].reverse(),
+    [history]
+  );
+
   useEffect(() => {
     const pusher = getPusherClient();
     const channel = pusher.subscribe(`session-${sessionId}`);
@@ -307,7 +85,10 @@ export default function SessionPage() {
         // Auto-save to history on consensus if story name is entered
         if (state.revealed && !prev?.revealed) {
           const consensusVote = getConsensusVote(state.participants);
-          const currentStory = storyRef.current.trim();
+          // IMPORTANT: Use state.story from server, NOT storyRef.current
+          // The storyRef might not be updated yet due to Pusher event ordering.
+          // The server always has the authoritative story value at reveal time.
+          const currentStory = (state.story ?? storyRef.current).trim();
           if (consensusVote && currentStory && currentStory !== lastAutoSavedStoryRef.current) {
             lastAutoSavedStoryRef.current = currentStory;
             const entry: HistoryEntry = {
@@ -529,6 +310,18 @@ export default function SessionPage() {
   }, [sessionId, joined, myId, selectedCard]);
 
   const revealVotes = useCallback(async () => {
+    // NOTE: We intentionally do NOT use optimistic update here.
+    //
+    // WHY? The reveal action triggers important side effects:
+    // - Auto-save to history when there's consensus
+    // - The auto-save logic in the Pusher handler detects the transition
+    //   by checking `state.revealed && !prev?.revealed`
+    //
+    // If we optimistically set revealed=true, the Pusher handler would
+    // see prev.revealed as already true, breaking the transition detection.
+    //
+    // The ~100ms wait for Pusher broadcast is acceptable here since reveal
+    // is a deliberate action (not repeated rapidly like voting).
     try {
       await fetch(`/api/sessions/${sessionId}/reveal`, {
         method: 'POST',
@@ -539,10 +332,28 @@ export default function SessionPage() {
   }, [sessionId]);
 
   const resetVotes = useCallback(async () => {
+    // Clear local UI state immediately
     setSelectedCard(null);
     setStory('');
     setStoryLocked(false);
     setCustomVote('');
+
+    // OPTIMISTIC UPDATE: Reset the session state immediately
+    // - Set revealed back to false (hides the results panel)
+    // - Clear all participant votes (shows empty cards)
+    // This gives instant feedback when starting a new round
+    setSession(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        revealed: false,
+        story: '',
+        storyLocked: false,
+        // Clear all votes from participants
+        participants: prev.participants.map(p => ({ ...p, vote: null })),
+      };
+    });
+
     try {
       await fetch(`/api/sessions/${sessionId}/reset`, {
         method: 'POST',
@@ -621,16 +432,31 @@ export default function SessionPage() {
     if (!myId || !myAvatar) return;
 
     const newAvatar = getNextAvatar(myAvatar);
+
+    // Update local state for immediate feedback
     setMyAvatar(newAvatar);
     myAvatarRef.current = newAvatar;
 
-    // Update localStorage
+    // OPTIMISTIC UPDATE: Update avatar in the participants list immediately
+    // Without this, the avatar change wouldn't appear in the participant
+    // cards until Pusher broadcasts the update from the server
+    setSession(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        participants: prev.participants.map(p =>
+          p.id === myId ? { ...p, avatar: newAvatar } : p
+        ),
+      };
+    });
+
+    // Persist to localStorage for rejoin functionality
     const stored = getStoredParticipant(sessionId);
     if (stored) {
       storeParticipant(sessionId, { ...stored, avatar: newAvatar });
     }
 
-    // Update on server
+    // Sync with server (other participants will see the change via Pusher)
     try {
       await fetch(`/api/sessions/${sessionId}/avatar`, {
         method: 'POST',
@@ -817,21 +643,27 @@ export default function SessionPage() {
               </div>
             ) : (
               <ul className="space-y-2">
-                {(() => {
-                  const lastOfVoteIds = getLastOccurrenceIds(history);
-                  return [...history].reverse().map((entry) => {
-                    const isLastOfVote = lastOfVoteIds.has(entry.id);
-                    return (
-                      <li
-                        key={entry.id}
-                        className={`flex justify-between items-center p-2.5 bg-[#f6f9fc] rounded-md hover:bg-[#e3e8ee] transition-colors ${isLastOfVote ? 'border-l-2 border-l-[#635bff]' : ''}`}
-                      >
-                        <span className="text-sm truncate flex-1 mr-2 text-[#3c4257]">{entry.story}</span>
-                        <span className="text-sm font-semibold text-[#635bff] bg-[#f5f8ff] px-2 py-0.5 rounded">{entry.vote}</span>
-                      </li>
-                    );
-                  });
-                })()}
+                {/*
+                  PERFORMANCE: Using pre-computed memoized values instead of IIFE.
+
+                  Before: Created new Set and reversed array on EVERY render
+                  After: Only recomputes when history actually changes
+
+                  This matters because React re-renders on any state change,
+                  not just history changes (e.g., typing in story field).
+                */}
+                {reversedHistory.map((entry) => {
+                  const isLastOfVote = lastOccurrenceIds.has(entry.id);
+                  return (
+                    <li
+                      key={entry.id}
+                      className={`flex justify-between items-center p-2.5 bg-[#f6f9fc] rounded-md hover:bg-[#e3e8ee] transition-colors ${isLastOfVote ? 'border-l-2 border-l-[#635bff]' : ''}`}
+                    >
+                      <span className="text-sm truncate flex-1 mr-2 text-[#3c4257]">{entry.story}</span>
+                      <span className="text-sm font-semibold text-[#635bff] bg-[#f5f8ff] px-2 py-0.5 rounded">{entry.vote}</span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -1165,136 +997,5 @@ export default function SessionPage() {
         </div>
       </div>
     </main>
-  );
-}
-
-function VoteSummary({ participants, onSelectVote, canSelect, customVote, onCustomVoteChange }: { participants: Participant[]; onSelectVote?: (vote: string) => void; canSelect?: boolean; customVote?: string; onCustomVoteChange?: (value: string) => void }) {
-  // Only count votes from voters
-  const allVotes = participants
-    .filter((p) => p.role === 'voter')
-    .map((p) => p.vote)
-    .filter((v): v is string => v !== null);
-
-  if (allVotes.length === 0) {
-    return <p className="text-[#8792a2]">No votes cast</p>;
-  }
-
-  const numericVotes = allVotes
-    .filter((v) => !isNaN(Number(v)))
-    .map(Number);
-
-  // Check if we have numeric votes for statistics
-  const hasNumericVotes = numericVotes.length > 0;
-
-  // Count occurrences of each vote
-  const voteCounts = allVotes.reduce((acc, vote) => {
-    acc[vote] = (acc[vote] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  // Find the maximum count
-  const maxCount = Math.max(...Object.values(voteCounts), 0);
-
-  // Find all votes with the maximum count (majority or joint majority)
-  const majorityVotes = Object.entries(voteCounts)
-    .filter(([, count]) => count === maxCount)
-    .map(([vote]) => vote);
-
-  // Check if there's consensus (all votes are the same)
-  const hasConsensus = allVotes.length > 1 && majorityVotes.length === 1 && maxCount === allVotes.length;
-
-  const average = hasNumericVotes ? numericVotes.reduce((a, b) => a + b, 0) / numericVotes.length : 0;
-  const min = hasNumericVotes ? Math.min(...numericVotes) : 0;
-  const max = hasNumericVotes ? Math.max(...numericVotes) : 0;
-
-  return (
-    <div className="space-y-4">
-      {/* Only show Average/Min/Max for numeric scales */}
-      {hasNumericVotes && (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-[#f6f9fc] rounded-md p-3 text-center border border-[#e3e8ee]">
-            <div className="text-2xl font-semibold text-[#1a1f36]">
-              {average.toFixed(1)}
-            </div>
-            <div className="text-xs text-[#697386] mt-0.5">Average</div>
-          </div>
-          <div className="bg-[#f6f9fc] rounded-md p-3 text-center border border-[#e3e8ee]">
-            <div className="text-2xl font-semibold text-[#1a1f36]">
-              {min}
-            </div>
-            <div className="text-xs text-[#697386] mt-0.5">Min</div>
-          </div>
-          <div className="bg-[#f6f9fc] rounded-md p-3 text-center border border-[#e3e8ee]">
-            <div className="text-2xl font-semibold text-[#1a1f36]">
-              {max}
-            </div>
-            <div className="text-xs text-[#697386] mt-0.5">Max</div>
-          </div>
-        </div>
-      )}
-      {hasConsensus ? (
-        <div className={`text-center ${hasNumericVotes ? 'pt-4 border-t border-[#e3e8ee]' : ''}`}>
-          <div
-            className={`text-2xl font-semibold text-[#30c48d] ${canSelect ? 'cursor-pointer bg-[#ecfdf5] border border-[#30c48d]/30 hover:bg-[#d1fae5] rounded-md px-5 py-3 transition-all inline-block' : ''}`}
-            style={canSelect ? { boxShadow: '0 2px 4px rgba(48, 196, 141, 0.15)' } : {}}
-            onClick={() => canSelect && onSelectVote?.((customVote || majorityVotes[0]))}
-          >
-            Consensus! {majorityVotes[0]}
-          </div>
-          <div className="text-sm text-[#697386] mt-2">
-            {canSelect ? 'Click to save to history' : `Everyone voted ${majorityVotes[0]}`}
-          </div>
-          {canSelect && (
-            <div className="mt-4">
-              <input
-                type="text"
-                maxLength={3}
-                value={customVote || ''}
-                onChange={(e) => onCustomVoteChange?.(e.target.value)}
-                placeholder="?"
-                className="w-16 h-12 text-2xl font-semibold text-center border border-[#e3e8ee] rounded-md bg-white text-[#1a1f36] focus:outline-none focus:ring-2 focus:ring-[#635bff]/20 focus:border-[#635bff]"
-              />
-              <div className="text-xs text-[#8792a2] mt-1.5">Or input value</div>
-            </div>
-          )}
-        </div>
-      ) : majorityVotes.length > 0 && (
-        <div className={`text-center ${hasNumericVotes ? 'pt-4 border-t border-[#e3e8ee]' : ''}`}>
-          <div className="flex justify-center items-center gap-3">
-            {majorityVotes.map((vote) => (
-              <span
-                key={vote}
-                className={`text-2xl font-semibold text-[#1a1f36] ${canSelect ? 'cursor-pointer bg-[#f5f8ff] border border-[#635bff]/30 hover:bg-[#e0e7ff] rounded-md px-5 py-3 transition-all' : ''}`}
-                style={canSelect ? { boxShadow: '0 2px 4px rgba(99, 91, 255, 0.15)' } : {}}
-                onClick={() => canSelect && onSelectVote?.((customVote || vote))}
-              >
-                {vote}
-              </span>
-            ))}
-          </div>
-          <div className="text-sm text-[#697386] mt-2">
-            {canSelect ? 'Click a value to save to history' : (
-              <>
-                {majorityVotes.length === 1 ? 'Majority Vote' : 'Joint Majority'}
-                {maxCount > 1 && ` (${maxCount} votes)`}
-              </>
-            )}
-          </div>
-          {canSelect && (
-            <div className="mt-4">
-              <input
-                type="text"
-                maxLength={3}
-                value={customVote || ''}
-                onChange={(e) => onCustomVoteChange?.(e.target.value)}
-                placeholder="?"
-                className="w-16 h-12 text-2xl font-semibold text-center border border-[#e3e8ee] rounded-md bg-white text-[#1a1f36] focus:outline-none focus:ring-2 focus:ring-[#635bff]/20 focus:border-[#635bff]"
-              />
-              <div className="text-xs text-[#8792a2] mt-1.5">Or input value</div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
