@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import { getPusherClient } from '@/lib/pusher-client';
 import { VOTING_SCALES, SCALE_ORDER, type VotingScale, type Participant, type SessionState, type HistoryEntry, type ParticipantRole } from '@/types/poker';
@@ -49,6 +49,32 @@ export default function SessionPage() {
     storyRef.current = story;
   }, [story]);
 
+  // =============================================================================
+  // MEMOIZED COMPUTATIONS
+  // =============================================================================
+  // useMemo prevents expensive re-calculations on every render.
+  // These values only recompute when their dependencies change.
+
+  /**
+   * Memoize which history entries should be highlighted.
+   * Only recomputes when the history array changes (new items added/removed).
+   * Without memoization, this Set would be rebuilt on every render.
+   */
+  const lastOccurrenceIds = useMemo(
+    () => getLastOccurrenceIds(history),
+    [history]
+  );
+
+  /**
+   * Memoize the reversed history for display.
+   * We show newest items first, but store oldest first for easier appending.
+   * Creating a new reversed array on every render would cause unnecessary work.
+   */
+  const reversedHistory = useMemo(
+    () => [...history].reverse(),
+    [history]
+  );
+
   useEffect(() => {
     const pusher = getPusherClient();
     const channel = pusher.subscribe(`session-${sessionId}`);
@@ -59,7 +85,10 @@ export default function SessionPage() {
         // Auto-save to history on consensus if story name is entered
         if (state.revealed && !prev?.revealed) {
           const consensusVote = getConsensusVote(state.participants);
-          const currentStory = storyRef.current.trim();
+          // IMPORTANT: Use state.story from server, NOT storyRef.current
+          // The storyRef might not be updated yet due to Pusher event ordering.
+          // The server always has the authoritative story value at reveal time.
+          const currentStory = (state.story ?? storyRef.current).trim();
           if (consensusVote && currentStory && currentStory !== lastAutoSavedStoryRef.current) {
             lastAutoSavedStoryRef.current = currentStory;
             const entry: HistoryEntry = {
@@ -281,6 +310,18 @@ export default function SessionPage() {
   }, [sessionId, joined, myId, selectedCard]);
 
   const revealVotes = useCallback(async () => {
+    // NOTE: We intentionally do NOT use optimistic update here.
+    //
+    // WHY? The reveal action triggers important side effects:
+    // - Auto-save to history when there's consensus
+    // - The auto-save logic in the Pusher handler detects the transition
+    //   by checking `state.revealed && !prev?.revealed`
+    //
+    // If we optimistically set revealed=true, the Pusher handler would
+    // see prev.revealed as already true, breaking the transition detection.
+    //
+    // The ~100ms wait for Pusher broadcast is acceptable here since reveal
+    // is a deliberate action (not repeated rapidly like voting).
     try {
       await fetch(`/api/sessions/${sessionId}/reveal`, {
         method: 'POST',
@@ -291,10 +332,28 @@ export default function SessionPage() {
   }, [sessionId]);
 
   const resetVotes = useCallback(async () => {
+    // Clear local UI state immediately
     setSelectedCard(null);
     setStory('');
     setStoryLocked(false);
     setCustomVote('');
+
+    // OPTIMISTIC UPDATE: Reset the session state immediately
+    // - Set revealed back to false (hides the results panel)
+    // - Clear all participant votes (shows empty cards)
+    // This gives instant feedback when starting a new round
+    setSession(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        revealed: false,
+        story: '',
+        storyLocked: false,
+        // Clear all votes from participants
+        participants: prev.participants.map(p => ({ ...p, vote: null })),
+      };
+    });
+
     try {
       await fetch(`/api/sessions/${sessionId}/reset`, {
         method: 'POST',
@@ -373,16 +432,31 @@ export default function SessionPage() {
     if (!myId || !myAvatar) return;
 
     const newAvatar = getNextAvatar(myAvatar);
+
+    // Update local state for immediate feedback
     setMyAvatar(newAvatar);
     myAvatarRef.current = newAvatar;
 
-    // Update localStorage
+    // OPTIMISTIC UPDATE: Update avatar in the participants list immediately
+    // Without this, the avatar change wouldn't appear in the participant
+    // cards until Pusher broadcasts the update from the server
+    setSession(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        participants: prev.participants.map(p =>
+          p.id === myId ? { ...p, avatar: newAvatar } : p
+        ),
+      };
+    });
+
+    // Persist to localStorage for rejoin functionality
     const stored = getStoredParticipant(sessionId);
     if (stored) {
       storeParticipant(sessionId, { ...stored, avatar: newAvatar });
     }
 
-    // Update on server
+    // Sync with server (other participants will see the change via Pusher)
     try {
       await fetch(`/api/sessions/${sessionId}/avatar`, {
         method: 'POST',
@@ -569,21 +643,27 @@ export default function SessionPage() {
               </div>
             ) : (
               <ul className="space-y-2">
-                {(() => {
-                  const lastOfVoteIds = getLastOccurrenceIds(history);
-                  return [...history].reverse().map((entry) => {
-                    const isLastOfVote = lastOfVoteIds.has(entry.id);
-                    return (
-                      <li
-                        key={entry.id}
-                        className={`flex justify-between items-center p-2.5 bg-[#f6f9fc] rounded-md hover:bg-[#e3e8ee] transition-colors ${isLastOfVote ? 'border-l-2 border-l-[#635bff]' : ''}`}
-                      >
-                        <span className="text-sm truncate flex-1 mr-2 text-[#3c4257]">{entry.story}</span>
-                        <span className="text-sm font-semibold text-[#635bff] bg-[#f5f8ff] px-2 py-0.5 rounded">{entry.vote}</span>
-                      </li>
-                    );
-                  });
-                })()}
+                {/*
+                  PERFORMANCE: Using pre-computed memoized values instead of IIFE.
+
+                  Before: Created new Set and reversed array on EVERY render
+                  After: Only recomputes when history actually changes
+
+                  This matters because React re-renders on any state change,
+                  not just history changes (e.g., typing in story field).
+                */}
+                {reversedHistory.map((entry) => {
+                  const isLastOfVote = lastOccurrenceIds.has(entry.id);
+                  return (
+                    <li
+                      key={entry.id}
+                      className={`flex justify-between items-center p-2.5 bg-[#f6f9fc] rounded-md hover:bg-[#e3e8ee] transition-colors ${isLastOfVote ? 'border-l-2 border-l-[#635bff]' : ''}`}
+                    >
+                      <span className="text-sm truncate flex-1 mr-2 text-[#3c4257]">{entry.story}</span>
+                      <span className="text-sm font-semibold text-[#635bff] bg-[#f5f8ff] px-2 py-0.5 rounded">{entry.vote}</span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
