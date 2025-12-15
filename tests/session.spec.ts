@@ -889,6 +889,69 @@ test.describe('Planning Poker Session', () => {
     await expect(avatarImg).not.toHaveAttribute('src', initialSrc!, { timeout: 5000 });
   });
 
+  test('current user profile card is highlighted with purple ring and glow', async ({ browser }) => {
+    // Create a session
+    const context1 = await browser.newContext();
+    const voter1 = await context1.newPage();
+
+    await voter1.goto('/');
+    await voter1.fill('#sessionName', 'Profile Highlight Test');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1).toHaveURL(/\/session\/[a-f0-9-]+/);
+    const sessionUrl = voter1.url();
+
+    // Voter 1 joins
+    await voter1.fill('#name', 'Voter1');
+    await voter1.click('button[type="submit"]');
+    await expect(voter1.getByText('Participants')).toBeVisible();
+
+    // Voter 2 joins the same session
+    const context2 = await browser.newContext();
+    const voter2 = await context2.newPage();
+    await voter2.goto(sessionUrl);
+    await voter2.fill('#name', 'Voter2');
+    await voter2.click('button[type="submit"]');
+    await expect(voter2.getByText('Voter1')).toBeVisible({ timeout: 10000 });
+
+    // From Voter1's perspective:
+    // - Their own card should have the purple ring (ring-[#635bff])
+    // - Their own card should have the "Click to change avatar" title
+    // - Voter2's card should NOT have these
+
+    // Voter1's card has the clickable title (only own card is clickable)
+    const voter1OwnCard = voter1.locator('[title="Click to change avatar"]');
+    await expect(voter1OwnCard).toBeVisible();
+    await expect(voter1OwnCard).toHaveCount(1); // Only one card should be clickable
+
+    // The card with ring highlight should contain Voter1's name nearby
+    const highlightedCard = voter1.locator('.ring-\\[\\#635bff\\]');
+    await expect(highlightedCard).toBeVisible();
+    await expect(highlightedCard).toHaveCount(1); // Only one card should be highlighted
+
+    // Verify Voter1's name is purple (highlighted)
+    const voter1Name = voter1.locator('span.text-\\[\\#635bff\\]').filter({ hasText: 'Voter1' });
+    await expect(voter1Name).toBeVisible();
+
+    // Verify Voter2's name is NOT purple (not highlighted)
+    const voter2Name = voter1.locator('span.text-\\[\\#3c4257\\]').filter({ hasText: 'Voter2' });
+    await expect(voter2Name).toBeVisible();
+
+    // From Voter2's perspective, the roles are reversed:
+    // - Their own card (Voter2) should be highlighted
+    // - Voter1's card should NOT be highlighted
+    const voter2OwnCard = voter2.locator('[title="Click to change avatar"]');
+    await expect(voter2OwnCard).toBeVisible();
+    await expect(voter2OwnCard).toHaveCount(1);
+
+    const voter2HighlightedCard = voter2.locator('.ring-\\[\\#635bff\\]');
+    await expect(voter2HighlightedCard).toBeVisible();
+    await expect(voter2HighlightedCard).toHaveCount(1);
+
+    // Cleanup
+    await context1.close();
+    await context2.close();
+  });
+
   test('custom vote input allows entering custom value', async ({ browser }) => {
     // Create a session with 2 voters
     const context1 = await browser.newContext();

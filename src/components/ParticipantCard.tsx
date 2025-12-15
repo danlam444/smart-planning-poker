@@ -43,7 +43,13 @@ export function ParticipantCard({
             ? 'bg-[#635bff]'
             : 'bg-white border border-[#e3e8ee]'
         } ${isMe ? 'cursor-pointer' : ''}`}
-        style={{ boxShadow: hasVoted ? '0 4px 12px rgba(99, 91, 255, 0.3)' : '0 2px 4px rgba(0,0,0,0.04)' }}
+        style={{
+          boxShadow: isMe
+            ? '0 0 12px rgba(99, 91, 255, 0.5)'
+            : hasVoted
+              ? '0 4px 12px rgba(99, 91, 255, 0.3)'
+              : '0 2px 4px rgba(0,0,0,0.04)'
+        }}
         onClick={isMe ? onAvatarClick : undefined}
         title={isMe ? 'Click to change avatar' : undefined}
       >
