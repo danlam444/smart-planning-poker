@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Planning Poker",
   description: "Real-time scrum planning poker for agile teams",
+  other: {
+    "google-adsense-account": "ca-pub-7810758495216241",
+  },
 };
 
 export default function RootLayout({
